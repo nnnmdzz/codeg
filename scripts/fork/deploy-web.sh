@@ -56,9 +56,11 @@ rm -rf "$staging"
 mkdir -p "$(dirname "$TARGET")"
 cp -a out "$staging"
 printf '%s\n' "$want" "$(git rev-parse --short HEAD)" "$(date -Is)" > "$staging/.fork-build"
+kept=""
 if [[ -d "$TARGET" ]]; then
   rm -rf "$TARGET.bak"
   mv "$TARGET" "$TARGET.bak"
+  kept=" (previous kept at $TARGET.bak)"
 fi
 mv "$staging" "$TARGET"
-echo "deployed $(git rev-parse --short HEAD) for $want to $TARGET (previous kept at $TARGET.bak)"
+echo "deployed $(git rev-parse --short HEAD) for $want to $TARGET$kept"
