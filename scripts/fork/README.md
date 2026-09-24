@@ -22,5 +22,9 @@ always current.
 
 ## Changes carried
 
-- `fix(markdown): keep relative file links relative through rehype-harden`
-  (upstream PR #815)
+Keep these to commits that are, or are meant to become, upstream PRs: once a
+release contains them, the rebase drops them and the fork shrinks back.
+
+- Upstream PR #815 as merged (9 commits: relative file links kept relative
+  through rehype-harden, and the maintainer's follow-ups to file badges).
+  Merged upstream after v0.32.1; drops out at the next release.
