@@ -136,3 +136,15 @@ describe("WebConnectionGuard", () => {
     expect(store.reconnectWebNow).not.toHaveBeenCalled()
   })
 })
+
+describe("WebConnectionGuard reconnecting pill", () => {
+  it("does not open a modal, so the page stays scrollable", () => {
+    renderGuard()
+    act(() => store.setState("reconnecting"))
+    act(() => {
+      vi.advanceTimersByTime(4000)
+    })
+    expect(screen.getByRole("status")).toHaveTextContent("Connection lost")
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument()
+  })
+})
