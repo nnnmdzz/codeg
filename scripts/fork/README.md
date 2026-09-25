@@ -28,7 +28,11 @@ git cannot tell on its own — upstream's merged version replaces it).
 
 - `src/components/fork/fork-watermark.tsx` + one line in `src/app/layout.tsx`:
   a small "dev fork · <tag> · <commit>" watermark at the bottom of every page,
-  so this UI is never mistaken for the official one. Fork-only.
+  so this UI is never mistaken for the official one. It asks the server its
+  version (`/api/health`) and turns amber when the server has updated past the
+  fork. Fork-only.
+- `src/lib/constants.ts`: connection keepalive every 90s instead of 30s (still
+  half the backend's default 180s idle timeout). Fork-only.
 
 History: upstream PR #815 (relative file links) was carried from v0.32.0 until
 v0.32.2 shipped it.
