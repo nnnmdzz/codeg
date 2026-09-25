@@ -60,6 +60,17 @@ staging="$TARGET.new"
 rm -rf "$staging"
 mkdir -p "$(dirname "$TARGET")"
 cp -a out "$staging"
+# 保留前幾版的 _next/static 分塊 7 天。部署前就打開的頁面，之後按需載入
+# （例如切換語言時才載入的語言分塊）要的是舊版的檔名；整個目錄換掉的話會
+# 404、頁面起不來。這些檔名帶內容雜湊，永遠不會和新版衝突，只補缺的、不覆蓋。
+if [[ -d "$TARGET/_next/static" ]]; then
+  (cd "$TARGET" && find _next/static -type f -mtime -7 -print0) |
+    while IFS= read -r -d '' f; do
+      [[ -e "$staging/$f" ]] && continue
+      mkdir -p "$staging/$(dirname "$f")"
+      cp -a "$TARGET/$f" "$staging/$f"
+    done
+fi
 printf '%s\n' "$want" "$(git rev-parse --short HEAD)" "$(date -Is)" > "$staging/.fork-build"
 kept=""
 if [[ -d "$TARGET" ]]; then
