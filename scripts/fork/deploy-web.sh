@@ -46,7 +46,8 @@ fi
 if (( build )); then
   pnpm install --frozen-lockfile
   # 水印上顯示的版本：上游 tag · fork commit（見 src/components/fork/fork-watermark.tsx）
-  NEXT_PUBLIC_CODEG_FORK_BUILD="${want#v} · $(git rev-parse --short HEAD)" \
+  NEXT_PUBLIC_CODEG_FORK_TAG="${want#v}" \
+    NEXT_PUBLIC_CODEG_FORK_COMMIT="$(git rev-parse --short HEAD)" \
     NODE_ENV=production pnpm build
 fi
 
