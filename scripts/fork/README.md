@@ -14,7 +14,13 @@ Both see the same conversations and the same running agents.
 
 ## Updating
 
-After the server updates itself, run `scripts/fork/deploy-web.sh`. It reads the
+Automatic: `codeg-web-fork-update.timer` runs `scripts/fork/auto-update.sh`
+every 10 minutes. When the server's version differs from the version the fork
+web was built for, it runs the deploy below and pushes the rebased branch; on a
+rebase conflict or a failed build it stops without deploying (see
+`journalctl -u codeg-web-fork-update`). Until then the watermark is amber.
+
+By hand: after the server updates itself, run `scripts/fork/deploy-web.sh`. It reads the
 server's version, rebases this branch onto that release tag (stops on a
 conflict), builds, and swaps the result in with a `.bak` of the previous build.
 Until then the fork UI is one release behind the server; the official UI is
