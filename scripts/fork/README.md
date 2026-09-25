@@ -22,9 +22,13 @@ always current.
 
 ## Changes carried
 
-Keep these to commits that are, or are meant to become, upstream PRs: once a
-release contains them, the rebase drops them and the fork shrinks back.
+Keep these small, and where possible make them upstream PRs first: once a
+release contains a carried PR, the rebase can drop it (`git rebase --skip` if
+git cannot tell on its own — upstream's merged version replaces it).
 
-- Upstream PR #815 as merged (9 commits: relative file links kept relative
-  through rehype-harden, and the maintainer's follow-ups to file badges).
-  Merged upstream after v0.32.1; drops out at the next release.
+- `src/components/fork/fork-watermark.tsx` + one line in `src/app/layout.tsx`:
+  a small "dev fork · <tag> · <commit>" watermark at the bottom of every page,
+  so this UI is never mistaken for the official one. Fork-only.
+
+History: upstream PR #815 (relative file links) was carried from v0.32.0 until
+v0.32.2 shipped it.

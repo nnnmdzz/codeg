@@ -36,6 +36,8 @@ if [[ "$base" != "$want" ]]; then
   git fetch --quiet upstream tag "$want" --no-tags
   if ! git rebase --onto "$want" "$base"; then
     echo "rebase stopped on a conflict. Resolve it, 'git rebase --continue', then run this again." >&2
+    echo "If the conflicting commit came from an upstream PR that $want already contains," >&2
+    echo "'git rebase --skip' it — upstream's merged version replaces it." >&2
     exit 1
   fi
   echo "rebased. Push when ready: git push --force-with-lease origin $(git branch --show-current)"
@@ -43,7 +45,9 @@ fi
 
 if (( build )); then
   pnpm install --frozen-lockfile
-  NODE_ENV=production pnpm build
+  # 水印上顯示的版本：上游 tag · fork commit（見 src/components/fork/fork-watermark.tsx）
+  NEXT_PUBLIC_CODEG_FORK_BUILD="${want#v} · $(git rev-parse --short HEAD)" \
+    NODE_ENV=production pnpm build
 fi
 
 for f in index.html workspace.html; do
