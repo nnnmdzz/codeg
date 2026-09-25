@@ -32,9 +32,9 @@ const RECONNECT_DIALOG_GRACE_MS = 4_000
 
 /**
  * Global, single-instance guard mounted once at the root layout. Watches the
- * web transport's connection health and renders a blocking dialog when the
- * link is lost (auto-reconnecting, with a manual "Reconnect now") or the
- * session has expired (prompting re-login). Inert outside web mode — the store
+ * web transport's connection health. A lost link shows a small non-blocking
+ * pill (auto-reconnecting, with a manual "Reconnect now") that leaves the
+ * page usable; an expired session shows a blocking dialog (prompting re-login). Inert outside web mode — the store
  * returns "connected" for SSR / desktop / remote-desktop, so this renders
  * nothing there.
  */
@@ -87,47 +87,56 @@ export function WebConnectionGuard() {
 
   const showReconnecting = state === "reconnecting" && graceElapsed
   const showUnauthorized = state === "unauthorized"
-  const open = showReconnecting || showUnauthorized
 
-  if (!open) return null
+  // 重連中：改用不攔截操作的小膠囊，放在標題列下方。斷線時已載入的紀錄
+  // 仍可上下捲動翻看，只有按鈕本身接收點擊，其餘區域點擊與捲動都穿透。
+  if (showReconnecting) {
+    return (
+      <div className="pointer-events-none fixed inset-x-0 top-[calc(env(safe-area-inset-top)+3rem)] z-50 flex justify-center px-4">
+        <div
+          role="status"
+          aria-live="polite"
+          className="pointer-events-auto flex items-center gap-2 rounded-full border bg-popover/95 py-1 pr-1 pl-3 text-xs text-popover-foreground shadow-sm backdrop-blur"
+        >
+          <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
+          <span>{t("disconnectedTitle")}</span>
+          <span className="sr-only">{t("reconnectingDescription")}</span>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 rounded-full px-2 text-xs"
+            onClick={() => reconnectWebNow()}
+          >
+            {t("reconnectNow")}
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!showUnauthorized) return null
 
   return (
     <AlertDialog open onOpenChange={() => {}}>
       <AlertDialogContent
         // Forced state: block Esc/outside dismissal. The dialog is driven
-        // entirely by connection health — it closes when the link recovers,
-        // not on user whim.
+        // entirely by connection health — it closes when the session is
+        // restored, not on user whim.
         onEscapeKeyDown={(e) => e.preventDefault()}
       >
         <AlertDialogHeader>
           <AlertDialogMedia>
-            {showUnauthorized ? (
-              <ShieldAlert className="text-destructive" />
-            ) : (
-              <Loader2 className="animate-spin" />
-            )}
+            <ShieldAlert className="text-destructive" />
           </AlertDialogMedia>
-          <AlertDialogTitle>
-            {showUnauthorized
-              ? t("sessionExpiredTitle")
-              : t("disconnectedTitle")}
-          </AlertDialogTitle>
+          <AlertDialogTitle>{t("sessionExpiredTitle")}</AlertDialogTitle>
           <AlertDialogDescription>
-            {showUnauthorized
-              ? t("sessionExpiredDescription")
-              : t("reconnectingDescription")}
+            {t("sessionExpiredDescription")}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          {showUnauthorized ? (
-            <Button onClick={() => redirectToCodegLogin()}>
-              {t("goToLogin")}
-            </Button>
-          ) : (
-            <Button onClick={() => reconnectWebNow()}>
-              {t("reconnectNow")}
-            </Button>
-          )}
+          <Button onClick={() => redirectToCodegLogin()}>
+            {t("goToLogin")}
+          </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
