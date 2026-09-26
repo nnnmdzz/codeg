@@ -28,7 +28,7 @@ import {
   acpRespondPermission,
   acpAnswerQuestion,
   acpAnswerPlanApproval,
-  acpDisconnect,
+  acpDisconnect as rawAcpDisconnect,
   acpTouchConnection,
   acpGetSessionSnapshot,
   acpFindConnectionForConversation,
@@ -128,6 +128,19 @@ import {
 } from "@/lib/selector-prefs-storage"
 import { rememberModelLabels } from "@/lib/model-label-store"
 import { useActiveFolder } from "@/contexts/active-folder-context"
+import {
+  canClaimOwnedConnection,
+  claimOwnedConnection,
+  isClaimedByAnotherPage,
+  recordOwnedConnection,
+} from "@/lib/fork/owned-connections"
+
+// mobile fork：連線已被本裝置的另一個頁面接手（見 owned-connections）時，
+// 這個頁面不再 acpDisconnect 它，以免關掉接手者正在用的 agent。
+function acpDisconnect(connectionId: string): Promise<void> {
+  if (isClaimedByAnotherPage(connectionId)) return Promise.resolve()
+  return rawAcpDisconnect(connectionId)
+}
 
 /**
  * A session id we are willing to interpolate into a shell command we hand the
@@ -6540,6 +6553,31 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
           const localOwnerKey = discovered
             ? localOwnerKeyOf(discovered.connection_id)
             : null
+          // mobile fork：這條連線是本裝置先前的頁面開的、而那個頁面已經不在
+          // （重新載入、app 從背景回來 WebView 重建），就直接以 owner 接手，
+          // 不當 viewer。只走 web 的 attach 路徑；桌面版維持原本行為。
+          if (
+            discovered &&
+            localOwnerKey === null &&
+            getEventStream() &&
+            canClaimOwnedConnection(discovered.connection_id)
+          ) {
+            claimOwnedConnection(discovered.connection_id)
+            lastActivityRef.current.set(contextKey, Date.now())
+            dispatch({
+              type: "CONNECTION_CREATED",
+              contextKey,
+              connectionId: discovered.connection_id,
+              agentType,
+              workingDir: nextWorkingDir,
+            })
+            setupAttachSubscription(
+              contextKey,
+              discovered.connection_id,
+              undefined
+            )
+            return
+          }
           if (discovered && localOwnerKey !== contextKey) {
             const attached = await connectAsViewer(
               contextKey,
@@ -6605,6 +6643,7 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
           return
         }
 
+        recordOwnedConnection(connectionId)
         lastActivityRef.current.set(contextKey, Date.now())
         dispatch({
           type: "CONNECTION_CREATED",

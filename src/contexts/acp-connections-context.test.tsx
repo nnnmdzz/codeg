@@ -6378,3 +6378,83 @@ describe("AIR session failures are told as notifications", () => {
     expect(h.recordAlert).not.toHaveBeenCalled()
   })
 })
+
+// mobile fork：本裝置先前頁面開的連線，在原頁面已不在時直接以 owner 接手。
+describe("mobile fork: claiming this device's own orphaned connection", () => {
+  function seedOwnedBy(pageId: string, alive: boolean) {
+    localStorage.setItem(
+      "codeg_fork_owned_connections",
+      JSON.stringify({ "owner-conn": { createdAt: Date.now(), pageId } })
+    )
+    localStorage.setItem(
+      "codeg_fork_live_pages",
+      JSON.stringify(alive ? { [pageId]: Date.now() } : {})
+    )
+  }
+
+  beforeEach(() => {
+    localStorage.clear()
+    h.acpFindConnectionForConversation.mockResolvedValue({
+      connection_id: "owner-conn",
+      event_seq: 3,
+    })
+  })
+
+  it("attaches as the owner when the page that opened it is gone", async () => {
+    seedOwnedBy("reloaded-away", false)
+    await mountProvider()
+
+    await act(async () => {
+      await h.actions!.connect(TAB, "claude_code", "/tmp/x", "sess-1", 42)
+    })
+
+    expect(h.acpConnect).not.toHaveBeenCalled()
+    expect(h.store!.getConnection(TAB)?.isViewer).toBe(false)
+    expect(h.attach).toHaveBeenCalledWith(
+      "owner-conn",
+      { sinceSeq: undefined },
+      expect.anything()
+    )
+
+    // 接手後就是自己的連線，關閉時照常 acpDisconnect。
+    await act(async () => {
+      await h.actions!.disconnect(TAB)
+    })
+    expect(h.acpDisconnect).toHaveBeenCalledWith("owner-conn")
+  })
+
+  it("stays a viewer while the opening page is still alive", async () => {
+    seedOwnedBy("other-tab", true)
+    await mountProvider()
+
+    await act(async () => {
+      await h.actions!.connect(TAB, "claude_code", "/tmp/x", "sess-1", 42)
+    })
+
+    expect(h.store!.getConnection(TAB)?.isViewer).toBe(true)
+  })
+
+  it("stays a viewer for a connection another device opened", async () => {
+    await mountProvider()
+
+    await act(async () => {
+      await h.actions!.connect(TAB, "claude_code", "/tmp/x", "sess-1", 42)
+    })
+
+    expect(h.store!.getConnection(TAB)?.isViewer).toBe(true)
+  })
+
+  it("records a spawned connection as this page's", async () => {
+    h.acpFindConnectionForConversation.mockResolvedValue(null)
+    await mountProvider()
+
+    await act(async () => {
+      await h.actions!.connect(TAB, "claude_code", "/tmp/x", "sess-1", 42)
+    })
+
+    const owned = JSON.parse(
+      localStorage.getItem("codeg_fork_owned_connections") ?? "{}"
+    )
+    expect(owned["spawned-conn"]).toBeDefined()
+  })
+})

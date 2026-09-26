@@ -2,6 +2,7 @@
 
 import { useCallback, useState, useSyncExternalStore } from "react"
 import { getAgentLabel } from "@/lib/custom-agents"
+import { ViewerOriginNote } from "@/components/fork/viewer-origin-note"
 import {
   HeartHandshake,
   HeartPulse,
@@ -265,6 +266,9 @@ export function ComposerConnectionStatus({ tabId }: { tabId: string | null }) {
           <p className="text-2xs leading-snug text-muted-foreground">
             {t("viewerNote")}
           </p>
+        ) : null}
+        {conn?.isViewer ? (
+          <ViewerOriginNote connectionId={conn.connectionId} />
         ) : null}
 
         {canReconnect && destructive ? (
