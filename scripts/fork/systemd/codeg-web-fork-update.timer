@@ -1,0 +1,10 @@
+[Unit]
+Description=每 10 分鐘檢查 codeg 伺服器版本，必要時重建 fork 網頁
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

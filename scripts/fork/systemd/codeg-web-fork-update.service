@@ -1,0 +1,11 @@
+[Unit]
+Description=codeg mobile fork：伺服器線上更新後重建 fork 網頁
+After=network-online.target codeg.service
+
+[Service]
+Type=oneshot
+User=root
+Environment=HOME=/root
+WorkingDirectory=/share/codeSpace/codeg/codeg-web-fork
+ExecStart=/share/codeSpace/codeg/codeg-web-fork/scripts/fork/auto-update.sh
+Nice=10
