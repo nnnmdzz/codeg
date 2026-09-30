@@ -1,0 +1,43 @@
+[Unit]
+Description=codeg mobile fork：讓 fork 網頁觸發重建、查詢進度（只經 unix socket 開給 nginx 容器）
+After=network.target
+# 先建好 /run/codeg-fork-admin，nginx 容器才掛得到同一個目錄。
+Before=docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -u /share/codeSpace/codeg/codeg-web-fork/scripts/fork/fork_admin.py
+Restart=on-failure
+RestartSec=5
+
+# socket 放在這裡；重啟服務時保留目錄，nginx 容器的掛載才不會指到已刪除的舊目錄。
+RuntimeDirectory=codeg-fork-admin
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+
+# 以 root 執行只為了能 systemctl start 那一個 unit；其餘能力全部拿掉。
+CapabilityBoundingSet=
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+# 只需要連本機的 codeg-server 驗 token。
+IPAddressDeny=any
+IPAddressAllow=localhost
+
+[Install]
+WantedBy=multi-user.target

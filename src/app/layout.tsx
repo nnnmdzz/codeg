@@ -111,11 +111,11 @@ export default async function RootLayout({
                     answer a close press. */}
                 <CloseRequestDialog />
                 {children}
+                <ForkWatermark />
               </AppearanceProvider>
             </ThemeProvider>
           </AppI18nProvider>
         </NextIntlClientProvider>
-        <ForkWatermark />
       </body>
     </html>
   )
