@@ -85,6 +85,16 @@ git cannot tell on its own — upstream's merged version replaces it).
   for the official one. It asks the server its version (`/api/health`) and,
   when the server has updated past the fork, turns amber and becomes the update
   button above. Fork-only.
+- Upstream PR #840 ("recover the live session after sleep/wake instead of
+  going stale"), cherry-picked as its five commits with `-x`: a WebSocket
+  heartbeat and wake-time liveness probe, and a transcript resync after the
+  event stream was down. It is the fix for replies that stop half-way with the
+  send button already back — a turn that ended while the stream was down (a
+  phone in the background, a socket that died without closing). Its Rust half
+  (the desktop remote proxy) is carried but unused here. One hand merge:
+  `web-connection-guard.tsx`, where the fork's reconnecting pill meets #840's
+  probe (doc comment only). Once a release contains #840, drop these commits
+  (`git rebase --skip` if git cannot tell on its own).
 - `src/lib/constants.ts`: connection keepalive every 90s instead of 30s (still
   half the backend's default 180s idle timeout). Fork-only.
 
