@@ -95,6 +95,17 @@ git cannot tell on its own — upstream's merged version replaces it).
   `web-connection-guard.tsx`, where the fork's reconnecting pill meets #840's
   probe (doc comment only). Once a release contains #840, drop these commits
   (`git rebase --skip` if git cannot tell on its own).
+- Convert-to-Traditional button: a 「繁」 button left of Send converts the
+  draft (or just the selection) from Simplified to Traditional Chinese with
+  Taiwan phrasing (OpenCC `s2twp`). Reference badges and code between
+  backticks are left alone; one Undo (offered in the toast) restores it. The
+  only upstream touch is two lines in `src/components/chat/message-input.tsx`;
+  everything else is fork-only: `src/components/fork/convert-to-traditional-button.tsx`,
+  `src/lib/fork/{s2twp,composer-to-traditional}.ts`, and `src/lib/fork/opencc/`
+  — opencc-js's core and the seven dictionaries s2twp uses, vendored rather
+  than added to package.json so the lockfile stays upstream's and rebases keep
+  applying. They load on the first press as their own chunk (about 430 KB
+  gzipped). To update: `node scripts/fork/vendor-opencc.mjs <version>`.
 - `src/lib/constants.ts`: connection keepalive every 90s instead of 30s (still
   half the backend's default 180s idle timeout). Fork-only.
 
