@@ -154,6 +154,7 @@ import type { Editor, JSONContent } from "@tiptap/core"
 import { useReferenceSearch } from "@/components/chat/composer/use-reference-search"
 import { useComposerMentionLabels } from "@/components/chat/composer/use-composer-mention-labels"
 import { ComposerAddMenu } from "@/components/chat/composer/composer-add-menu"
+import { ConvertToTraditionalButton } from "@/components/fork/convert-to-traditional-button"
 import { ComposerImageThumbnails } from "@/components/chat/composer/composer-image-thumbnails"
 import { useComposerAttachments } from "@/components/chat/composer/use-composer-attachments"
 import { useComposerShortcuts } from "@/components/chat/composer/use-composer-shortcuts"
@@ -2355,7 +2356,15 @@ export function MessageInput({
                     </div>
                   )}
                 </div>
-                <div className="shrink-0">{actionButtons}</div>
+                <div className="flex shrink-0 items-end gap-1">
+                  {/* mobile fork：一鍵轉為繁體 */}
+                  <ConvertToTraditionalButton
+                    getEditor={() => editorRef.current?.getEditor() ?? null}
+                    ready={composerReady}
+                    disabled={disabled}
+                  />
+                  {actionButtons}
+                </div>
               </div>
               {showDragActive && (
                 <div className="pointer-events-none absolute inset-1 z-20 flex items-center justify-center rounded-md border border-dashed border-primary/50 bg-background/80 text-xs text-muted-foreground">
