@@ -106,6 +106,13 @@ git cannot tell on its own — upstream's merged version replaces it).
   than added to package.json so the lockfile stays upstream's and rebases keep
   applying. They load on the first press as their own chunk (about 430 KB
   gzipped). To update: `node scripts/fork/vendor-opencc.mjs <version>`.
+- Thinking blocks open by default: one prop (`defaultOpen`) on `ReasoningPart`
+  in `src/components/message/content-parts-renderer.tsx`. Upstream folds them
+  until asked (its `Reasoning` default stays folded, and its tests still
+  hold); once open, upstream no longer auto-closes them, so nothing is pulled
+  away mid-read. Earlier replies still fold their whole process (thinking
+  included) when a new message is sent — that is upstream's thread fold, left
+  as is. Test: `src/components/fork/reasoning-default-open.test.tsx`.
 - `src/lib/constants.ts`: connection keepalive every 90s instead of 30s (still
   half the backend's default 180s idle timeout). Fork-only.
 
