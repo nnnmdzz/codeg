@@ -3067,7 +3067,12 @@ const ReasoningPart = memo(function ReasoningPart({
   const hasContent = part.content.trim().length > 0
   const expandable = hasContent || part.isStreaming
   return (
-    <Reasoning isStreaming={part.isStreaming} expandable={expandable}>
+    <Reasoning
+      isStreaming={part.isStreaming}
+      expandable={expandable}
+      // mobile fork：思考預設展開（讀者仍可自行收起；展開後不會自動收回）
+      defaultOpen
+    >
       <ReasoningTrigger />
       {expandable && <ReasoningContent>{part.content}</ReasoningContent>}
     </Reasoning>
