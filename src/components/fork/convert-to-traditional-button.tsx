@@ -3,7 +3,8 @@
 // mobile fork：composer 送出鍵旁的「轉為繁體（台灣用語）」按鈕。不送上游。
 //
 // 有選取時只轉選取的文字，否則轉整則草稿；引用標籤與反引號裡的程式碼不轉
-// （見 @/lib/fork/composer-to-traditional）。轉換器第一次按下時才載入
+// （見 @/lib/fork/composer-to-traditional）。字轉完後，標點也換成臺灣的寫法
+// （@/lib/fork/taiwan-punctuation）。轉換器第一次按下時才載入
 // （@/lib/fork/s2twp）。轉完的提示帶「復原」，按一次就整筆還原。
 //
 // 旁邊的箭頭打開選單，切換「傳送前自動轉為繁體」（@/lib/fork/convert-on-send）。
@@ -31,6 +32,7 @@ import {
 } from "@/lib/fork/composer-to-traditional"
 import { setConvertOnSend, useConvertOnSend } from "@/lib/fork/convert-on-send"
 import { getLoadedS2TWP, loadS2TWP } from "@/lib/fork/s2twp"
+import { taiwanPunctuation } from "@/lib/fork/taiwan-punctuation"
 import { cn } from "@/lib/utils"
 
 // fork 專用字串不放進 i18n/messages，避免和上游的翻譯檔衝突。
@@ -39,12 +41,12 @@ const COPY = {
     label: "轉為繁體（臺灣用語）",
     done: "已轉為繁體",
     undo: "復原",
-    nothing: "沒有需要轉換的簡體字",
+    nothing: "沒有需要轉換的簡體字或標點",
     failed: "轉換器載入失敗，請稍後再試",
     options: "繁體轉換選項",
     onSend: "傳送前自動轉為繁體",
     onSendHint:
-      "傳送時先把整則訊息轉成繁體（臺灣用語）；引用標籤與反引號裡的程式碼不轉。",
+      "傳送時先把整則訊息轉成繁體（臺灣用語與標點）；引用標籤與反引號裡的程式碼不轉。",
     onSendActive: "傳送前會自動轉為繁體",
     turnedOn: "已開啟：傳送前自動轉為繁體",
     turnedOff: "已關閉：傳送前自動轉為繁體",
@@ -54,12 +56,12 @@ const COPY = {
     label: "转为繁体（台湾用语）",
     done: "已转为繁体",
     undo: "撤销",
-    nothing: "没有需要转换的简体字",
+    nothing: "没有需要转换的简体字或标点",
     failed: "转换器加载失败，请稍后再试",
     options: "繁体转换选项",
     onSend: "发送前自动转为繁体",
     onSendHint:
-      "发送时先把整条消息转成繁体（台湾用语）；引用标签与反引号里的代码不转。",
+      "发送时先把整条消息转成繁体（台湾用语与标点）；引用标签与反引号里的代码不转。",
     onSendActive: "发送前会自动转为繁体",
     turnedOn: "已开启：发送前自动转为繁体",
     turnedOff: "已关闭：发送前自动转为繁体",
@@ -74,13 +76,18 @@ const COPY = {
     options: "Traditional Chinese options",
     onSend: "Convert to Traditional before sending",
     onSendHint:
-      "Sending converts the whole message to Traditional Chinese (Taiwan) first. Reference badges and code in backticks are left alone.",
+      "Sending converts the whole message to Traditional Chinese (Taiwan wording and punctuation) first. Reference badges and code in backticks are left alone.",
     onSendActive: "Messages are converted to Traditional before sending",
     turnedOn: "On: convert to Traditional before sending",
     turnedOff: "Off: messages are sent as typed",
     sendFailed: "Couldn't load the converter, so the message wasn't sent.",
   },
 } as const
+
+/** 字轉成繁體（臺灣用語）之後，標點也換成臺灣的寫法 */
+function toTaiwan(convert: (text: string) => string) {
+  return (text: string) => taiwanPunctuation(convert(text))
+}
 
 function useCopy() {
   const locale = useLocale()
@@ -139,7 +146,7 @@ export function ConvertToTraditionalButton({
     try {
       const converter = await loadS2TWP()
       if (editor.isDestroyed) return
-      const result = convertComposerText(editor, converter)
+      const result = convertComposerText(editor, toTaiwan(converter))
       if (!result.changed) {
         toast(copy.nothing)
         return
@@ -272,7 +279,7 @@ export function useSendAsTraditional<A extends unknown[]>(
       }
       const converter = getLoadedS2TWP()
       if (converter) {
-        convertComposerText(editor, converter, { wholeDraft: true })
+        convertComposerText(editor, toTaiwan(converter), { wholeDraft: true })
         send(...args)
         return
       }
@@ -282,7 +289,7 @@ export function useSendAsTraditional<A extends unknown[]>(
         .then((loaded) => {
           const current = latest.current.getEditor()
           if (!current || current.isDestroyed) return
-          convertComposerText(current, loaded, { wholeDraft: true })
+          convertComposerText(current, toTaiwan(loaded), { wholeDraft: true })
           latest.current.send(...args)
         })
         .catch(() => {

@@ -102,6 +102,17 @@ describe("ConvertToTraditionalButton", () => {
     expect(plain()).toBe("这个怎么说")
   })
 
+  it("also converts punctuation to the Taiwanese forms", async () => {
+    act(() => {
+      editor.commands.setContent("<p>他说：“这个——好,对吧?”</p>")
+    })
+    const button = renderButton()
+    await act(async () => {
+      fireEvent.click(button)
+    })
+    expect(plain()).toBe("他說：「這个──好，对吧？」")
+  })
+
   it("says so when there is nothing to convert", async () => {
     act(() => {
       editor.commands.setContent("<p>已經是繁體</p>")
@@ -110,7 +121,7 @@ describe("ConvertToTraditionalButton", () => {
     await act(async () => {
       fireEvent.click(button)
     })
-    expect(toast).toHaveBeenCalledWith("沒有需要轉換的簡體字")
+    expect(toast).toHaveBeenCalledWith("沒有需要轉換的簡體字或標點")
     expect(plain()).toBe("已經是繁體")
   })
 

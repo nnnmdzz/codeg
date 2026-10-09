@@ -97,8 +97,14 @@ git cannot tell on its own — upstream's merged version replaces it).
   (`git rebase --skip` if git cannot tell on its own).
 - Convert-to-Traditional button: a 「繁」 button left of Send converts the
   draft (or just the selection) from Simplified to Traditional Chinese with
-  Taiwan phrasing (OpenCC `s2twp`). Reference badges and code between
-  backticks are left alone; one Undo (offered in the toast) restores it. The
+  Taiwan phrasing (OpenCC `s2twp`), then switches punctuation to Taiwan's
+  forms (`src/lib/fork/taiwan-punctuation.ts`): “”‘’ → 「」『』 when used in
+  Chinese (English quotes and apostrophes stay), · → ‧ between Chinese
+  characters, —— → ──, and half-width , . ? ! : ; after Chinese → full width
+  (a period only before a space, the end or Chinese, so 說明.txt and ./src
+  stay; straight quotes stay too, they may belong to a command). Reference
+  badges and code between backticks are left alone; one Undo (offered in the
+  toast) restores it. The
   chevron next to it holds a "Convert to Traditional before sending" switch
   (per device, off by default; 「繁」 turns primary and underlined while on):
   Send, Enter, queueing, saving a queued edit and steering then convert the
