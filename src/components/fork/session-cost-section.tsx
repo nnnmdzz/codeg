@@ -38,8 +38,6 @@ const COPY = {
     heading: "費用（API 牌價等值）",
     total: "總計",
     approx: "約",
-    savings: "快取淨省下",
-    savingsNegative: "快取淨多花",
     input: "輸入",
     output: "輸出",
     cacheWrite: "快取寫入",
@@ -60,8 +58,6 @@ const COPY = {
     heading: "费用（API 牌价等值）",
     total: "总计",
     approx: "约",
-    savings: "缓存净省下",
-    savingsNegative: "缓存净多花",
     input: "输入",
     output: "输出",
     cacheWrite: "缓存写入",
@@ -82,8 +78,6 @@ const COPY = {
     heading: "Cost (API list-price equivalent)",
     total: "Total",
     approx: "≈",
-    savings: "Saved by cache (net)",
-    savingsNegative: "Extra cost of caching (net)",
     input: "Input",
     output: "Output",
     cacheWrite: "Cache write",
@@ -248,18 +242,6 @@ export function SessionCostSection({
               {!result.split.complete && `${copy.approx} `}
               {formatUsd(result.cost.total, locale)}
             </InfoItem>
-            {Math.abs(result.cost.cacheSavings) >= 0.0001 && (
-              <InfoItem
-                label={
-                  result.cost.cacheSavings > 0
-                    ? copy.savings
-                    : copy.savingsNegative
-                }
-                valueClassName={numeric}
-              >
-                {formatUsd(Math.abs(result.cost.cacheSavings), locale)}
-              </InfoItem>
-            )}
             <InfoItem label={copy.input} valueClassName={numeric}>
               {formatUsd(result.cost.composition.input, locale)}
             </InfoItem>

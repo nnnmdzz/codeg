@@ -147,21 +147,3 @@ export function addParts(a: CostParts, b: CostParts): CostParts {
     cacheRead: a.cacheRead + b.cacheRead,
   }
 }
-
-/**
- * 快取淨省下多少（美元）：快取讀取若以一般輸入計價會多花的，扣掉快取寫入比
- * 一般輸入多付的部分。沒有快取時這些 token 都會是一般輸入。可能為負（寫了
- * 快取卻很少讀到）。
- */
-export function cacheSavings(
-  tokens: TokenCounts,
-  price: ModelPrice,
-  cacheWritePerMillion: number
-): number {
-  const read = price.cacheRead ?? price.input
-  return (
-    (tokens.cache_read_tokens * (price.input - read) -
-      tokens.cache_creation_tokens * (cacheWritePerMillion - price.input)) /
-    1e6
-  )
-}

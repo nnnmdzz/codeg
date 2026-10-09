@@ -201,11 +201,6 @@ describe("computeSessionCost", () => {
     expect(cost.ttl).toBe("1h")
   })
 
-  it("nets the cache-write premium out of what cache reads saved", () => {
-    // 讀取 30M 若以一般輸入計要 150、實付 15，省 135；寫入比一般輸入多付 0.5 × 5
-    expect(cost.cacheSavings).toBeCloseTo(135 - 2.5)
-  })
-
   it("lists usage it can't price instead of counting it as free", () => {
     expect(cost.unpriced).toEqual([{ model: UNKNOWN_MODEL, tokens: 7 }])
   })
