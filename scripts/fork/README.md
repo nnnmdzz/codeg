@@ -160,8 +160,11 @@ git cannot tell on its own — upstream's merged version replaces it).
   `src/components/message/turn-stats.tsx`; the rest is
   `src/components/fork/reply-cost.tsx`.
 - Session cost: the same pricing in Session Details (the right panel tab and
-  the dialog), under Token Usage — the total, the four-kind bar, and, when
-  the session switched models, each model with its tokens, cost and share.
+  the dialog), under Token Usage — the total and the four-kind bar, then
+  every priced model (one included, so it's clear which model the price is
+  for) with its cost, its share when there are several, and each kind as
+  tokens × rate = cost; plus the turn count and cost per turn when the whole
+  session is loaded, and the rate snapshot's date.
   The amount always follows the session's total usage; the split comes from
   turns already in memory (the open conversation's timeline), never from an
   extra fetch — transcripts run to tens of MB. Turns older than the loaded
