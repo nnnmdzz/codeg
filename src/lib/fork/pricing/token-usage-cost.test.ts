@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import type {
   TokenUsageBreakdownItem,
+  TokenUsageConversationItem,
   TokenUsagePoint,
   TokenUsageReport,
   TokenUsageTotals,
@@ -44,6 +45,20 @@ const totals = (c: Counts): TokenUsageTotals => ({
   ...counts(c),
   duration_ms: 0,
   active_days: 1,
+})
+
+const conversation = (
+  id: number,
+  agent: string,
+  tokens: number
+): TokenUsageConversationItem => ({
+  conversation_id: id,
+  title: `session ${id}`,
+  agent_type: agent,
+  folder_label: "work",
+  total_tokens: tokens,
+  turn_count: 1,
+  last_activity_at: "2026-10-02T00:00:00Z",
 })
 
 function report(over: Partial<TokenUsageReport>): TokenUsageReport {
@@ -144,6 +159,57 @@ describe("computeTokenUsageCost", () => {
     expect(cost.composition.output).toBeCloseTo(20)
     expect(cost.composition.cacheWrite).toBeCloseTo(13)
     expect(cost.composition.cacheRead).toBeCloseTo(2)
+  })
+
+  it("breaks every row down by token kind and by the other dimension", () => {
+    const [opus] = cost.byModel
+    expect(opus.composition.cacheWrite).toBeCloseTo(13)
+    expect(opus.split.map((x) => x.key)).toEqual(["claude_code", "cline"])
+    expect(opus.split[0].cost).toBeCloseTo(claudeCode)
+    expect(opus.split[1].cost).toBeCloseTo(cline)
+    expect(opus).toMatchObject({ conversations: 1, turns: 1 })
+
+    const agent = cost.byAgent.find((r) => r.key === "cline")!
+    expect(agent.split).toEqual([
+      { key: "claude-opus-5-5", cost: expect.closeTo(cline) },
+    ])
+    expect(agent.composition.cacheWrite).toBeCloseTo(cline)
+
+    const folder = cost.byFolder.find((r) => r.key === "1")!
+    expect(folder.split.map((x) => x.key)).toEqual(["claude-opus-5-5"])
+    expect(folder.split[0].cost).toBeCloseTo(folder.cost)
+  })
+
+  it("splits each period by model", () => {
+    for (const point of cost.series) {
+      expect(point.byModel.map((x) => x.key)).toEqual(["claude-opus-5-5"])
+      expect(point.byModel[0].cost).toBeCloseTo(point.cost)
+    }
+  })
+
+  it("estimates session costs at what each agent paid per token", () => {
+    const withSessions = report({
+      ...opusSlice,
+      top_conversations: [
+        conversation(8, "cline", 1 * M),
+        conversation(7, "claude_code", 6.5 * M),
+      ],
+    })
+    const { sessions } = computeTokenUsageCost(
+      main,
+      new Map([["claude-opus-5-5", withSessions]]),
+      PRICES
+    )
+    // Claude Code 在 Opus 花了 34、用了 13M token；Cline 花了 5、用了 1M
+    expect(sessions.map((x) => x.id)).toEqual([7, 8])
+    expect(sessions[0].cost).toBeCloseTo((6.5 * 34) / 13)
+    expect(sessions[1].cost).toBeCloseTo(5)
+    expect(sessions[0]).toMatchObject({
+      title: "session 7",
+      agent: "claude_code",
+      folder: "work",
+      tokens: 6.5 * M,
+    })
   })
 
   it("estimates a model whose per-model report didn't load, and says so", () => {

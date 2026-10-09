@@ -20,6 +20,8 @@ import {
   UNKNOWN_MODEL,
   type LoadedUsage,
 } from "@/lib/fork/pricing/session-cost"
+import { CostComposition } from "@/components/fork/cost-composition"
+import { ACCENT } from "@/components/token-usage/charts"
 import { formatTokenCount } from "@/lib/token-format"
 import type {
   DbConversationSummary,
@@ -38,10 +40,6 @@ const COPY = {
     heading: "費用（API 牌價等值）",
     total: "總計",
     approx: "約",
-    input: "輸入",
-    output: "輸出",
-    cacheWrite: "快取寫入",
-    cacheRead: "快取讀取",
     byModel: "依模型",
     loading: "計算費用中…",
     failed: "費用計算失敗",
@@ -58,10 +56,6 @@ const COPY = {
     heading: "费用（API 牌价等值）",
     total: "总计",
     approx: "约",
-    input: "输入",
-    output: "输出",
-    cacheWrite: "缓存写入",
-    cacheRead: "缓存读取",
     byModel: "按模型",
     loading: "计算费用中…",
     failed: "费用计算失败",
@@ -78,10 +72,6 @@ const COPY = {
     heading: "Cost (API list-price equivalent)",
     total: "Total",
     approx: "≈",
-    input: "Input",
-    output: "Output",
-    cacheWrite: "Cache write",
-    cacheRead: "Cache read",
     byModel: "By model",
     loading: "Computing cost…",
     failed: "Couldn't compute the cost",
@@ -233,8 +223,8 @@ export function SessionCostSection({
           </div>
         )
       ) : (
-        <div>
-          <dl className="grid grid-cols-1 gap-x-4 gap-y-3 @[20rem]:grid-cols-2">
+        <div className="space-y-3">
+          <dl>
             <InfoItem
               label={copy.total}
               valueClassName={`${numeric} text-base font-semibold`}
@@ -242,46 +232,49 @@ export function SessionCostSection({
               {!result.split.complete && `${copy.approx} `}
               {formatUsd(result.cost.total, locale)}
             </InfoItem>
-            <InfoItem label={copy.input} valueClassName={numeric}>
-              {formatUsd(result.cost.composition.input, locale)}
-            </InfoItem>
-            <InfoItem label={copy.output} valueClassName={numeric}>
-              {formatUsd(result.cost.composition.output, locale)}
-            </InfoItem>
-            {result.cost.composition.cacheWrite > 0 && (
-              <InfoItem label={copy.cacheWrite} valueClassName={numeric}>
-                {formatUsd(result.cost.composition.cacheWrite, locale)}
-              </InfoItem>
-            )}
-            {result.cost.composition.cacheRead > 0 && (
-              <InfoItem label={copy.cacheRead} valueClassName={numeric}>
-                {formatUsd(result.cost.composition.cacheRead, locale)}
-              </InfoItem>
-            )}
           </dl>
+          <CostComposition parts={result.cost.composition} />
           {result.cost.byModel.length > 1 && (
-            <div className="mt-3 space-y-1.5">
+            <div className="space-y-1.5">
               <div className="text-xs text-muted-foreground">
                 {copy.byModel}
               </div>
-              <ul className="space-y-1">
-                {result.cost.byModel.map((m) => (
-                  <li key={m.model} className="flex items-baseline gap-2">
-                    <span className="min-w-0 flex-1 truncate">
-                      {name(m.model)}
-                    </span>
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {formatTokenCount(m.tokens)}
-                    </span>
-                    <span className={`shrink-0 ${numeric}`}>
-                      {formatUsd(m.cost, locale)}
-                    </span>
-                  </li>
-                ))}
+              <ul className="tu-viz space-y-2">
+                {result.cost.byModel.map((m) => {
+                  const share =
+                    result.cost.total > 0 ? m.cost / result.cost.total : 0
+                  return (
+                    <li key={m.model}>
+                      <div className="flex items-baseline gap-2">
+                        <span className="min-w-0 flex-1 truncate">
+                          {name(m.model)}
+                        </span>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {formatTokenCount(m.tokens)}
+                        </span>
+                        <span className={`shrink-0 ${numeric}`}>
+                          {formatUsd(m.cost, locale)}
+                        </span>
+                        <span className="w-10 shrink-0 text-right font-mono text-[0.6875rem] tabular-nums text-muted-foreground">
+                          {`${(share * 100).toFixed(0)}%`}
+                        </span>
+                      </div>
+                      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted/70">
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            width: `${Math.max(share * 100, 1.5)}%`,
+                            backgroundColor: ACCENT,
+                          }}
+                        />
+                      </div>
+                    </li>
+                  )
+                })}
               </ul>
             </div>
           )}
-          <div className="mt-3 space-y-1 text-xs leading-relaxed text-muted-foreground">
+          <div className="space-y-1 text-xs leading-relaxed text-muted-foreground">
             {result.cost.unpriced.length > 0 && (
               <p className="text-amber-700 dark:text-amber-400">
                 {copy.unpriced(
