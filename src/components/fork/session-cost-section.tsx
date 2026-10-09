@@ -42,7 +42,7 @@ import {
 // fork 專用字串不放進 i18n/messages，避免和上游的翻譯檔衝突。
 const COPY = {
   "zh-TW": {
-    heading: "費用（API 牌價等值）",
+    heading: "費用",
     total: "總計",
     approx: "約",
     kinds: {
@@ -56,16 +56,12 @@ const COPY = {
     loading: "計算費用中…",
     failed: "費用計算失敗",
     unknownModel: "未記錄模型",
-    note: (ttl: string, source: string) =>
-      `以官方 API 單價換算（${source}），不是實際帳單。單價為每百萬 token；快取寫入以 ${ttl} 計。`,
-    ttl: { "1h": "1 小時", "5m": "5 分鐘" },
-    unpriced: (list: string) => `未計價（查不到單價）：${list}`,
-    assumed: (model: string) =>
-      `較早、未載入的回合以 ${model} 計，金額為估計值。`,
+    unpriced: (list: string) => `未計價：${list}`,
+    assumed: (model: string) => `未載入的較早回合以 ${model} 計`,
     sep: "、",
   },
   "zh-CN": {
-    heading: "费用（API 牌价等值）",
+    heading: "费用",
     total: "总计",
     approx: "约",
     kinds: {
@@ -79,16 +75,12 @@ const COPY = {
     loading: "计算费用中…",
     failed: "费用计算失败",
     unknownModel: "未记录模型",
-    note: (ttl: string, source: string) =>
-      `以官方 API 单价换算（${source}），不是实际账单。单价为每百万 token；缓存写入以 ${ttl} 计。`,
-    ttl: { "1h": "1 小时", "5m": "5 分钟" },
-    unpriced: (list: string) => `未计价（查不到单价）：${list}`,
-    assumed: (model: string) =>
-      `较早、未载入的回合以 ${model} 计，金额为估计值。`,
+    unpriced: (list: string) => `未计价：${list}`,
+    assumed: (model: string) => `未载入的较早回合以 ${model} 计`,
     sep: "、",
   },
   en: {
-    heading: "Cost (API list-price equivalent)",
+    heading: "Cost",
     total: "Total",
     approx: "≈",
     kinds: {
@@ -102,12 +94,8 @@ const COPY = {
     loading: "Computing cost…",
     failed: "Couldn't compute the cost",
     unknownModel: "No model recorded",
-    note: (ttl: string, source: string) =>
-      `Priced at official API rates (${source}) — not your bill. Rates are per million tokens; cache writes at the ${ttl} rate.`,
-    ttl: { "1h": "1-hour", "5m": "5-minute" },
-    unpriced: (list: string) => `Not priced (no known rate): ${list}`,
-    assumed: (model: string) =>
-      `Earlier turns that aren't loaded are priced as ${model}; the figures are estimates.`,
+    unpriced: (list: string) => `Not priced: ${list}`,
+    assumed: (model: string) => `Earlier unloaded turns priced as ${model}`,
     sep: ", ",
   },
 } as const
@@ -292,7 +280,7 @@ export function SessionCostSection({
                     </span>
                   )}
                 </div>
-                <dl className="mt-1.5 grid grid-cols-[auto_1fr_auto] items-baseline gap-x-2 gap-y-1 text-xs">
+                <dl className="mt-1.5 grid grid-cols-[auto_1fr_auto] items-baseline gap-x-3 gap-y-1 text-xs">
                   {KINDS.filter((k) => m.usage[k.tokens] > 0).map((k) => (
                     <div key={k.key} className="contents">
                       <dt className="flex items-center gap-1.5 text-muted-foreground">
@@ -305,7 +293,7 @@ export function SessionCostSection({
                       </dt>
                       <dd className="min-w-0 truncate text-right font-mono tabular-nums text-muted-foreground">
                         {formatTokenCount(m.usage[k.tokens])} ×{" "}
-                        {formatRate(m.rates[k.key], locale)}
+                        {formatRate(m.rates[k.key], locale)}/M
                       </dd>
                       <dd className="text-right font-mono tabular-nums">
                         {formatUsd(m.parts[k.key], locale)}
@@ -336,15 +324,6 @@ export function SessionCostSection({
             {!result.split.complete && result.split.restModel && (
               <p>{copy.assumed(name(result.split.restModel))}</p>
             )}
-            <p>
-              {copy.note(
-                copy.ttl[result.cost.ttl],
-                `LiteLLM ${
-                  (prices?.updatedAt ?? "").slice(0, 10) ||
-                  prices?.revision.slice(0, 7)
-                }`
-              )}
-            </p>
           </div>
         </div>
       )}

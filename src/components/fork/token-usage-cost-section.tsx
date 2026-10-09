@@ -51,8 +51,7 @@ import { cn } from "@/lib/utils"
 // fork 專用字串不放進 i18n/messages，避免和上游的翻譯檔衝突。
 const COPY = {
   "zh-TW": {
-    title: "費用（API 牌價等值）",
-    hint: "以各模型的官方 API 單價換算；訂閱方案不按 token 計費，走代理的價格也不同，這不是實際帳單。",
+    title: "費用",
     dims: { model: "模型", agent: "Agent", folder: "資料夾", session: "會話" },
     dimLabel: "費用分組",
     peak: "最高",
@@ -68,23 +67,19 @@ const COPY = {
       `${count} 個會話，平均每個 ${v}`,
     perTurn: (_n: number, count: string, v: string) =>
       `${count} 回合，平均每回合 ${v}`,
-    sessionsNote:
-      "以會話本身的用量計算。會話有一部分落在這段期間之外，或用過不只一個模型時，依 token 比例分攤，標 ≈；還沒讀到會話用量時，先以該模型在這段期間的平均單價估算。",
-    assumptions:
-      "快取寫入：Claude Code 以 1 小時計，其他 agent 以 5 分鐘計。長上下文加價、快速模式、批次折扣未計入；過去的用量以目前單價回算。",
-    prices: (date: string) => `單價：LiteLLM（${date}）`,
-    unpriced: (n: number, share: string, list: string) =>
-      `${n} 個模型查不到單價、未計入費用（佔 ${share} token）：${list}`,
-    approximate: "有模型的細項沒有取得，該模型的費用以 5 分鐘快取價粗估。",
-    truncated: "資料量超過上限，費用只涵蓋最近的一部分。",
+    sessionsNote: "標 ≈ 的會話依 token 比例估算。",
+    prices: (date: string) => `單價：LiteLLM ${date}`,
+    unpriced: (share: string, list: string) =>
+      `未計價：${list}（佔 ${share} token）`,
+    approximate: "部分模型的細項沒取得，這些模型的費用是粗估。",
+    truncated: "資料超過上限，只計入最近的部分。",
     failed: "費用計算失敗：",
     loading: "計算費用中…",
     sep: "、",
     colon: "：",
   },
   "zh-CN": {
-    title: "费用（API 牌价等值）",
-    hint: "以各模型的官方 API 单价换算；订阅方案不按 token 计费，走代理的价格也不同，这不是实际账单。",
+    title: "费用",
     dims: { model: "模型", agent: "Agent", folder: "文件夹", session: "会话" },
     dimLabel: "费用分组",
     peak: "最高",
@@ -100,23 +95,19 @@ const COPY = {
       `${count} 个会话，平均每个 ${v}`,
     perTurn: (_n: number, count: string, v: string) =>
       `${count} 轮，平均每轮 ${v}`,
-    sessionsNote:
-      "以会话本身的用量计算。会话有一部分落在这段期间之外，或用过不止一个模型时，按 token 比例分摊，标 ≈；还没读到会话用量时，先以该模型在这段期间的平均单价估算。",
-    assumptions:
-      "缓存写入：Claude Code 以 1 小时计，其他 agent 以 5 分钟计。长上下文加价、快速模式、批量折扣未计入；过去的用量以当前单价回算。",
-    prices: (date: string) => `单价：LiteLLM（${date}）`,
-    unpriced: (n: number, share: string, list: string) =>
-      `${n} 个模型查不到单价、未计入费用（占 ${share} token）：${list}`,
-    approximate: "有模型的细项没有取得，该模型的费用以 5 分钟缓存价粗估。",
-    truncated: "数据量超过上限，费用只涵盖最近的一部分。",
+    sessionsNote: "标 ≈ 的会话按 token 比例估算。",
+    prices: (date: string) => `单价：LiteLLM ${date}`,
+    unpriced: (share: string, list: string) =>
+      `未计价：${list}（占 ${share} token）`,
+    approximate: "部分模型的细项没取得，这些模型的费用是粗估。",
+    truncated: "数据超过上限，只计入最近的部分。",
     failed: "费用计算失败：",
     loading: "计算费用中…",
     sep: "、",
     colon: "：",
   },
   en: {
-    title: "Cost (API list-price equivalent)",
-    hint: "Token usage priced at each model's official API rates. Subscriptions aren't billed per token and proxies charge differently — this is not your bill.",
+    title: "Cost",
     dims: {
       model: "Model",
       agent: "Agent",
@@ -137,17 +128,12 @@ const COPY = {
       `${count} ${n === 1 ? "session" : "sessions"}, ${v} each on average`,
     perTurn: (n: number, count: string, v: string) =>
       `${count} ${n === 1 ? "turn" : "turns"}, ${v} per turn`,
-    sessionsNote:
-      "Priced from each session's own usage. Sessions that partly fall outside this range or used more than one model are split by tokens and marked ≈; until a session's usage loads, it's estimated at the model's average rate for this range.",
-    assumptions:
-      "Cache writes: 1-hour rate for Claude Code, 5-minute rate for other agents. Long-context surcharges, fast mode and batch discounts are not applied; past usage is priced at today's rates.",
-    prices: (date: string) => `Rates: LiteLLM (${date})`,
-    unpriced: (n: number, share: string, list: string) =>
-      `${n} model(s) have no known rate and are left out (${share} of tokens): ${list}`,
-    approximate:
-      "Some per-model details didn't load; those models are estimated at the 5-minute cache rate.",
-    truncated:
-      "The data hit its row cap; costs cover only the most recent slice.",
+    sessionsNote: "≈ marks sessions estimated by token share.",
+    prices: (date: string) => `Rates: LiteLLM ${date}`,
+    unpriced: (share: string, list: string) =>
+      `Not priced: ${list} (${share} of tokens)`,
+    approximate: "Some model details didn't load; those costs are rough.",
+    truncated: "Data hit its cap; only the latest part is counted.",
     failed: "Couldn't compute costs: ",
     loading: "Computing costs…",
     sep: ", ",
@@ -851,9 +837,6 @@ export function TokenUsageCostSection({
               />
             )}
           </h2>
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            {copy.hint}
-          </p>
         </div>
         <SegmentedFilter
           ariaLabel={copy.dimLabel}
@@ -930,7 +913,6 @@ export function TokenUsageCostSection({
             {cost.unpriced.models.length > 0 && (
               <p className="text-amber-700 dark:text-amber-400">
                 {copy.unpriced(
-                  cost.unpriced.models.length,
                   `${(cost.unpriced.share * 100).toFixed(1)}%`,
                   cost.unpriced.models
                     .map((m) => modelName(m.key))
@@ -940,7 +922,6 @@ export function TokenUsageCostSection({
             )}
             {cost.approximate && <p>{copy.approximate}</p>}
             {cost.truncated && <p>{copy.truncated}</p>}
-            <p>{copy.assumptions}</p>
             {prices && (
               <p>
                 <BrowserLink

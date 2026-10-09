@@ -126,8 +126,8 @@ git cannot tell on its own — upstream's merged version replaces it).
   away mid-read. Earlier replies still fold their whole process (thinking
   included) when a new message is sent — that is upstream's thread fold, left
   as is. Test: `src/components/fork/reasoning-default-open.test.tsx`.
-- Token usage cost: a "Cost (API list-price equivalent)" section on the Token
-  Usage page — total (with the delta vs the previous period), a bar splitting
+- Token usage cost: a "Cost" section (official API rates, not a bill) on the
+  Token Usage page — total (with the delta vs the previous period), a bar splitting
   it into input / output / cache write / cache read, cost per period, and a
   ranked list by model / agent / folder / session, in USD. Each model in the
   report gets its own model-filtered report, so periods, agents and folders
