@@ -70,9 +70,6 @@ const COPY = {
       cacheRead: "快取讀取",
     },
     compositionLabel: "費用組成",
-    savings: (v: string) => `與不用快取相比淨省下 ${v}（已扣掉快取寫入的加價）`,
-    savingsNegative: (v: string) =>
-      `與不用快取相比淨多花 ${v}：寫入的快取還沒被讀到幾次`,
     sep: "、",
   },
   "zh-CN": {
@@ -103,9 +100,6 @@ const COPY = {
       cacheRead: "缓存读取",
     },
     compositionLabel: "费用组成",
-    savings: (v: string) => `与不用缓存相比净省下 ${v}（已扣掉缓存写入的加价）`,
-    savingsNegative: (v: string) =>
-      `与不用缓存相比净多花 ${v}：写入的缓存还没被读到几次`,
     sep: "、",
   },
   en: {
@@ -138,10 +132,6 @@ const COPY = {
       cacheRead: "Cache read",
     },
     compositionLabel: "Cost composition",
-    savings: (v: string) =>
-      `Caching saved ${v} vs. no cache (net of the cache-write premium)`,
-    savingsNegative: (v: string) =>
-      `Caching cost ${v} more than no cache: the cached context has barely been reused yet`,
     sep: ", ",
   },
 } as const
@@ -327,13 +317,11 @@ function DeltaChip({
 function CostComposition({
   parts,
   total,
-  savings,
   locale,
   copy,
 }: {
   parts: CostParts
   total: number
-  savings: number
   locale: string
   copy: Copy
 }) {
@@ -350,8 +338,6 @@ function CostComposition({
     .sort((a, b) => b.value - a.value)
   // flex-grow 的總和小於 1 時填不滿，所以換算成百分比
   const sum = segments.reduce((acc, seg) => acc + seg.value, 0)
-  // 小於最小顯示位數的差額不提
-  const showSavings = Math.abs(savings) >= 0.0001
   return (
     <div className="mt-4">
       <div
@@ -385,13 +371,6 @@ function CostComposition({
           </li>
         ))}
       </ul>
-      {showSavings && (
-        <p className="mt-2 text-xs text-muted-foreground">
-          {savings > 0
-            ? copy.savings(formatUsd(savings, locale))
-            : copy.savingsNegative(formatUsd(-savings, locale))}
-        </p>
-      )}
     </div>
   )
 }
@@ -629,7 +608,6 @@ export function TokenUsageCostSection({
               <CostComposition
                 parts={cost.composition}
                 total={cost.total}
-                savings={cost.cacheSavings}
                 locale={locale}
                 copy={copy}
               />

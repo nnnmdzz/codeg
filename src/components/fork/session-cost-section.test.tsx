@@ -128,9 +128,6 @@ describe("SessionCostSection", () => {
   it("prices a session that isn't open at its model, without fetching", async () => {
     renderSection(OPUS_USAGE, OPUS)
     expect(await screen.findByText("$55.00")).toBeInTheDocument()
-    expect(screen.getByText("Saved by cache (net)")).toBeInTheDocument()
-    // 讀取省下 30 × 4.5 = 135，扣掉寫入加價 0.5 × 5
-    expect(screen.getByText("$132.50")).toBeInTheDocument()
     expect(screen.getByText("$10.00")).toBeInTheDocument()
     expect(screen.getByText("$25.00")).toBeInTheDocument()
     expect(screen.getByText("$5.00")).toBeInTheDocument()

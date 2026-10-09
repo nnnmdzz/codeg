@@ -137,7 +137,7 @@ describe("TokenUsageCostSection", () => {
     ).toHaveAttribute("href", "https://example.test/prices.json")
   })
 
-  it("shows what each token kind cost and what the cache saved", async () => {
+  it("shows what each token kind cost", async () => {
     renderSection()
     await screen.findAllByText("$39.00")
     expect(
@@ -147,12 +147,6 @@ describe("TokenUsageCostSection", () => {
     for (const value of ["$4.00", "$20.00", "$13.00", "$2.00"]) {
       expect(screen.getByText(value)).toBeInTheDocument()
     }
-    // 讀取省下 10 × 3.8 = 38，扣掉寫入加價 (8 − 4) + (5 − 4)
-    expect(
-      screen.getByText(
-        "Caching saved $33.00 vs. no cache (net of the cache-write premium)"
-      )
-    ).toBeInTheDocument()
   })
 
   it("reuses per-model reports until the data changes", async () => {

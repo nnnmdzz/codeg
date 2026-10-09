@@ -7,7 +7,6 @@
 import type { MessageTurn, TurnUsage } from "@/lib/types"
 import {
   addParts,
-  cacheSavings,
   cacheTtlForAgent,
   cacheWriteRate,
   costParts,
@@ -149,7 +148,6 @@ export interface SessionCost {
   total: number
   byModel: { model: string; cost: number; tokens: number }[]
   composition: CostParts
-  cacheSavings: number
   unpriced: { model: string; tokens: number }[]
   /** 快取寫入依哪種有效期限計價（依會話的 agent） */
   ttl: CacheTtl
@@ -164,7 +162,6 @@ export function computeSessionCost(
   const byModel: SessionCost["byModel"] = []
   const unpriced: SessionCost["unpriced"] = []
   let composition = NO_COST
-  let savings = 0
   for (const [model, usage] of perModel) {
     const tokens = tokensOf(usage)
     if (tokens === 0) continue
@@ -176,7 +173,6 @@ export function computeSessionCost(
     const rate = cacheWriteRate(price, ttl)
     byModel.push({ model, cost: tokenCost(counts(usage), price, rate), tokens })
     composition = addParts(composition, costParts(counts(usage), price, rate))
-    savings += cacheSavings(counts(usage), price, rate)
   }
   byModel.sort((a, b) => b.cost - a.cost)
   unpriced.sort((a, b) => b.tokens - a.tokens)
@@ -184,7 +180,6 @@ export function computeSessionCost(
     total: byModel.reduce((sum, m) => sum + m.cost, 0),
     byModel,
     composition,
-    cacheSavings: savings,
     unpriced,
     ttl,
   }

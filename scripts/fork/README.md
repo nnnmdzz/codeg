@@ -123,16 +123,15 @@ git cannot tell on its own — upstream's merged version replaces it).
   unpriced, never counted as zero. Rates are a LiteLLM snapshot in
   `src/lib/fork/pricing/prices.json`, refreshed with
   `node scripts/fork/vendor-prices.mjs`. Under the total, a bar splits the
-  cost into input / output / cache write / cache read and says what caching
-  saved net of the cache-write premium. Per-model reports are reused while the
+  cost into input / output / cache write / cache read. Per-model reports are reused while the
   main report's numbers are unchanged (switching filters back, refreshes with
   no new usage). The only upstream touch is the section's mount in
   `src/components/token-usage/token-usage-page.tsx`; the rest is
   `src/components/fork/token-usage-cost-section.tsx` and
   `src/lib/fork/pricing/`.
 - Session cost: the same pricing in Session Details (the right panel tab and
-  the dialog), under Token Usage — total, the four kinds, cache savings, and
-  a per-model split when the session switched models. The amount always
+  the dialog), under Token Usage — total, the four kinds, and a per-model
+  split when the session switched models. The amount always
   follows the session's total usage; the split comes from turns already in
   memory (the open conversation's timeline), never from an extra fetch —
   transcripts run to tens of MB. Turns older than the loaded window go to the
