@@ -134,21 +134,16 @@ describe("SessionCostSection", () => {
     ).toBeInTheDocument()
     // 只有一個模型也列出來，底下是「數量 × 單價 = 金額」
     expect(screen.getByText(OPUS)).toBeInTheDocument()
-    expect(screen.getByText("2M × $5")).toBeInTheDocument()
+    expect(screen.getByText("2M × $5/M")).toBeInTheDocument()
     expect(screen.getByText("$10.00")).toBeInTheDocument()
-    expect(screen.getByText("1M × $25")).toBeInTheDocument()
+    expect(screen.getByText("1M × $25/M")).toBeInTheDocument()
     expect(screen.getByText("$25.00")).toBeInTheDocument()
-    expect(screen.getByText("500K × $10")).toBeInTheDocument()
+    expect(screen.getByText("500K × $10/M")).toBeInTheDocument()
     expect(screen.getByText("$5.00")).toBeInTheDocument()
-    expect(screen.getByText("30M × $0.50")).toBeInTheDocument()
+    expect(screen.getByText("30M × $0.50/M")).toBeInTheDocument()
     expect(screen.getByText("$15.00")).toBeInTheDocument()
     // 會話沒開著，不知道回合數
     expect(screen.queryByText(/per turn/)).toBeNull()
-    expect(
-      screen.getByText(
-        "Priced at official API rates (LiteLLM 2026-10-09) — not your bill. Rates are per million tokens; cache writes at the 1-hour rate."
-      )
-    ).toBeVisible()
   })
 
   it("splits an open session by the models its loaded turns used", async () => {
@@ -176,9 +171,7 @@ describe("SessionCostSection", () => {
     renderSection(usage(4 * M, 2 * M, 0.5 * M, 30 * M), SONNET)
     expect(await screen.findByText("≈ $78.00")).toBeInTheDocument()
     expect(
-      screen.getByText(
-        `Earlier turns that aren't loaded are priced as ${OPUS}; the figures are estimates.`
-      )
+      screen.getByText(`Earlier unloaded turns priced as ${OPUS}`)
     ).toBeInTheDocument()
   })
 

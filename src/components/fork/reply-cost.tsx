@@ -27,16 +27,16 @@ export const ReplyCostAgentProvider = AgentTypeContext.Provider
 
 const COPY = {
   "zh-TW": {
-    title: "這則回覆的費用（API 牌價等值，不是實際帳單）",
-    estimate: "這則回覆用過不只一個模型，以第一個模型估算",
+    title: "這則回覆的費用",
+    estimate: "用過多個模型，以第一個模型估算",
   },
   "zh-CN": {
-    title: "这条回复的费用（API 牌价等值，不是实际账单）",
-    estimate: "这条回复用过不止一个模型，以第一个模型估算",
+    title: "这条回复的费用",
+    estimate: "用过多个模型，以第一个模型估算",
   },
   en: {
-    title: "Cost of this reply (API list-price equivalent, not your bill)",
-    estimate: "This reply used more than one model; estimated at the first",
+    title: "Cost of this reply",
+    estimate: "Used several models; estimated at the first",
   },
 } as const
 

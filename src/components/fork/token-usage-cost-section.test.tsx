@@ -160,10 +160,10 @@ describe("TokenUsageCostSection", () => {
     // 查不到單價的模型不另外查，也不當成 0 元
     expect(tokenUsageReport).toHaveBeenCalledTimes(1)
     expect(screen.getByText(/mystery-model/)).toHaveTextContent(
-      "1 model(s) have no known rate"
+      "Not priced: mystery-model (6.7% of tokens)"
     )
     expect(
-      screen.getByRole("link", { name: /LiteLLM \(2026-10-09\)/ })
+      screen.getByRole("link", { name: "Rates: LiteLLM 2026-10-09" })
     ).toHaveAttribute("href", "https://example.test/prices.json")
   })
 
@@ -237,7 +237,9 @@ describe("TokenUsageCostSection", () => {
     expect(screen.getByText("Fix login")).toBeInTheDocument()
     expect(screen.getByText("≈ $17.00")).toBeInTheDocument()
     expect(screen.getByText("Claude Code · work")).toBeInTheDocument()
-    expect(screen.getByText(/Priced from each session/)).toBeInTheDocument()
+    expect(
+      screen.getByText("≈ marks sessions estimated by token share.")
+    ).toBeInTheDocument()
     // 讀到會話用量：整段都在期間內、只用 Opus，4 + 5 + 0.25 × 8 + 5 × 0.2
     await act(async () => release())
     expect(await screen.findByText("$12.00")).toBeInTheDocument()
