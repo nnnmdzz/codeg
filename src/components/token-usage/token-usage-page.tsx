@@ -54,6 +54,7 @@ import { toErrorMessage } from "@/lib/app-error"
 import { getAgentLabel } from "@/lib/custom-agents"
 import { subscribe } from "@/lib/platform"
 import { formatTokenCount } from "@/lib/token-format"
+import { TokenUsageCostSection } from "@/components/fork/token-usage-cost-section"
 import {
   averagePerActiveDay,
   averagePerConversation,
@@ -1219,6 +1220,21 @@ export function TokenUsagePage() {
                           )}`}
                         />
                       </section>
+
+                      {/* mobile fork：費用（API 牌價等值） */}
+                      <TokenUsageCostSection
+                        report={report}
+                        filter={{
+                          start: range.start,
+                          end: range.end,
+                          folderIds: folderIds.length
+                            ? folderIds.map(Number)
+                            : null,
+                          agentTypes: agentTypes.length ? agentTypes : null,
+                          bucket: effectiveBucket,
+                          tzOffsetMinutes: localTzOffsetMinutes(now),
+                        }}
+                      />
 
                       {/* ─── Trend ─── */}
                       <Panel
