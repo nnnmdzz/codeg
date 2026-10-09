@@ -2,7 +2,7 @@
 //
 // 只動文字節點：引用標籤（@ 檔案等）是獨立的 atom 節點，原樣保留。反引號裡的
 // 程式碼不轉——整段 ``` 區塊（含圍欄那兩行）與行內 `x`——路徑、識別字、字串
-// 常值改了就錯。有選取時只轉選取的範圍。
+// 常值改了就錯。有選取時只轉選取的範圍（傳送前的自動轉換例外，一律轉整則）。
 //
 // 整次轉換是一筆獨立的編輯紀錄（closeHistory，不併入前面的輸入），按一次
 // 復原就剛好還原；每段只替換頭尾實際不同的部分，游標所在的字沒變就不會被
@@ -115,12 +115,15 @@ export interface ConversionResult {
 
 export function convertComposerText(
   editor: Editor,
-  convert: (text: string) => string
+  convert: (text: string) => string,
+  /** wholeDraft：不管選取，轉整則草稿 */
+  options: { wholeDraft?: boolean } = {}
 ): ConversionResult {
   const { state } = editor
   const { flat, pieces } = flatten(state.doc)
   const mask = codeMask(flat)
-  const { from, to, empty } = state.selection
+  const { from, to } = state.selection
+  const empty = options.wholeDraft === true || state.selection.empty
 
   const edits: {
     from: number

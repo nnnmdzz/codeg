@@ -99,9 +99,16 @@ git cannot tell on its own — upstream's merged version replaces it).
   draft (or just the selection) from Simplified to Traditional Chinese with
   Taiwan phrasing (OpenCC `s2twp`). Reference badges and code between
   backticks are left alone; one Undo (offered in the toast) restores it. The
-  only upstream touch is two lines in `src/components/chat/message-input.tsx`;
-  everything else is fork-only: `src/components/fork/convert-to-traditional-button.tsx`,
-  `src/lib/fork/{s2twp,composer-to-traditional}.ts`, and `src/lib/fork/opencc/`
+  chevron next to it holds a "Convert to Traditional before sending" switch
+  (per device, off by default; 「繁」 turns primary and underlined while on):
+  Send, Enter, queueing, saving a queued edit and steering then convert the
+  whole draft first, and a converter that fails to load blocks the send
+  instead of sending it unconverted. Upstream touch in
+  `src/components/chat/message-input.tsx`: the button's mount, plus
+  `handleSend` / `handleSteerClick` renamed to `…Now` and re-declared as
+  `useSendAsTraditional(…Now)`, so every caller goes through the switch.
+  Everything else is fork-only: `src/components/fork/convert-to-traditional-button.tsx`,
+  `src/lib/fork/{s2twp,composer-to-traditional,convert-on-send}.ts`, and `src/lib/fork/opencc/`
   — opencc-js's core and the seven dictionaries s2twp uses, vendored rather
   than added to package.json so the lockfile stays upstream's and rebases keep
   applying. They load on the first press as their own chunk (about 430 KB
