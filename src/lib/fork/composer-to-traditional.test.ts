@@ -99,6 +99,15 @@ describe("convertComposerText", () => {
     expect(editor.state.doc.textBetween(from, to)).toBe("說這")
   })
 
+  it("converts the whole draft regardless of the selection when asked", () => {
+    setParagraphs([text("这里说这个")])
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 3, 5))
+    )
+    convertComposerText(editor, fake, { wholeDraft: true })
+    expect(plain()).toBe("這里說這个")
+  })
+
   it("handles conversions that change the length", () => {
     setParagraphs([text("插U盘再说")])
     convertComposerText(editor, fake)

@@ -154,7 +154,10 @@ import type { Editor, JSONContent } from "@tiptap/core"
 import { useReferenceSearch } from "@/components/chat/composer/use-reference-search"
 import { useComposerMentionLabels } from "@/components/chat/composer/use-composer-mention-labels"
 import { ComposerAddMenu } from "@/components/chat/composer/composer-add-menu"
-import { ConvertToTraditionalButton } from "@/components/fork/convert-to-traditional-button"
+import {
+  ConvertToTraditionalButton,
+  useSendAsTraditional,
+} from "@/components/fork/convert-to-traditional-button"
 import { ComposerImageThumbnails } from "@/components/chat/composer/composer-image-thumbnails"
 import { useComposerAttachments } from "@/components/chat/composer/use-composer-attachments"
 import { useComposerShortcuts } from "@/components/chat/composer/use-composer-shortcuts"
@@ -1557,7 +1560,7 @@ export function MessageInput({
     draftStorageKey: effectiveDraftStorageKey,
   }
 
-  const handleSend = useCallback(() => {
+  const handleSendNow = useCallback(() => {
     // The editor stays editable while `disabled` (the agent is busy) so the user
     // can keep typing, but a plain send is blocked — only enqueue / queue-edit
     // save go through. Mirrors the legacy textarea's keydown guard.
@@ -1608,6 +1611,11 @@ export function MessageInput({
     effectiveDraftStorageKey,
     resetComposer,
   ])
+  // mobile fork：開啟「傳送前自動轉為繁體」時，先轉換再傳送
+  const handleSend = useSendAsTraditional(
+    handleSendNow,
+    () => editorRef.current?.getEditor() ?? null
+  )
 
   // Mid-turn send over the session's live-feedback channel: a native push
   // inserts into the running turn; a pull-tool session records a waiting note
@@ -1625,7 +1633,7 @@ export function MessageInput({
   // uploads are gated here exactly like `handleSend` (no server-side uri to
   // hydrate from yet), since the enqueue fallback below bypasses its gate.
   const [steering, setSteering] = useState(false)
-  const handleSteerClick = useCallback(async () => {
+  const handleSteerClickNow = useCallback(async () => {
     if (!onSteer || steering) return
     if (hasUploadingImage) {
       toast.error(tAttach("attachUploadInProgress"))
@@ -1685,6 +1693,11 @@ export function MessageInput({
     steerChannel,
     t,
   ])
+  // mobile fork：插話也一樣先轉換
+  const handleSteerClick = useSendAsTraditional(
+    handleSteerClickNow,
+    () => editorRef.current?.getEditor() ?? null
+  )
 
   // Navigation/confirm/escape keys for the `/` (commands) and `$` (Codex skills)
   // runtime menu, routed from inside the editor (RichComposer.onExternalMenuKeyDown)

@@ -7,6 +7,7 @@
 import type { ConverterFunction } from "./opencc/core"
 
 let converter: Promise<ConverterFunction> | null = null
+let loaded: ConverterFunction | null = null
 
 export function loadS2TWP(): Promise<ConverterFunction> {
   converter ??= Promise.all([import("./opencc/core"), import("./opencc/dicts")])
@@ -14,7 +15,7 @@ export function loadS2TWP(): Promise<ConverterFunction> {
       // 與 opencc-js preset/cn2t.js 的 configs.s2twp 相同：先正規化相容字，
       // 以詞組斷詞，再依序做「簡 → 繁」與「繁 → 台灣用語、異體字」。
       // from / to 只為通過 ConverterBuilder 的參數檢查，實際走 configs。
-      return core.ConverterBuilder({
+      loaded = core.ConverterBuilder({
         from: { cn: [[d.STPhrases, d.STCharacters]] },
         to: { twp: [[d.TWPhrases], [d.TWVariantsPhrases, d.TWVariants]] },
         configs: {
@@ -35,6 +36,7 @@ export function loadS2TWP(): Promise<ConverterFunction> {
           },
         },
       })({ from: "cn", to: "twp" })
+      return loaded
     })
     .catch((error: unknown) => {
       // 載入失敗（例如部署換版後舊 chunk 不在了）不要卡死，下次按再試。
@@ -42,4 +44,9 @@ export function loadS2TWP(): Promise<ConverterFunction> {
       throw error
     })
   return converter
+}
+
+/** 已經載入好的轉換器，還沒載入時為 null。傳送前自動轉換靠它同步轉換。 */
+export function getLoadedS2TWP(): ConverterFunction | null {
+  return loaded
 }
