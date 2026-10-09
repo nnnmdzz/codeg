@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { NextIntlClientProvider } from "next-intl"
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import type {
   TokenUsageBreakdownItem,
   TokenUsageFilter,
@@ -85,7 +85,10 @@ vi.mock("@/lib/fork/pricing/pricing", async (importOriginal) => ({
 }))
 
 import enMessages from "@/i18n/messages/en.json"
-import { TokenUsageCostSection } from "./token-usage-cost-section"
+import {
+  resetCostSliceCache,
+  TokenUsageCostSection,
+} from "./token-usage-cost-section"
 
 const FILTER = {
   start: "2026-10-01T00:00:00Z",
@@ -96,15 +99,24 @@ const FILTER = {
   tzOffsetMinutes: 480,
 }
 
-function renderSection() {
-  return render(
+function section(r: TokenUsageReport) {
+  return (
     <NextIntlClientProvider locale="en" messages={enMessages}>
-      <TokenUsageCostSection report={main} filter={FILTER} />
+      <TokenUsageCostSection report={r} filter={FILTER} />
     </NextIntlClientProvider>
   )
 }
 
+function renderSection() {
+  return render(section(main))
+}
+
 describe("TokenUsageCostSection", () => {
+  beforeEach(() => {
+    resetCostSliceCache()
+    tokenUsageReport.mockClear()
+  })
+
   it("prices each model through its own report and shows the total", async () => {
     renderSection()
     // claude_code 34（1 小時快取寫入）+ cline 5（5 分鐘）= 39
@@ -123,6 +135,41 @@ describe("TokenUsageCostSection", () => {
     expect(
       screen.getByRole("link", { name: /LiteLLM \(2026-10-09\)/ })
     ).toHaveAttribute("href", "https://example.test/prices.json")
+  })
+
+  it("shows what each token kind cost and what the cache saved", async () => {
+    renderSection()
+    await screen.findAllByText("$39.00")
+    expect(
+      screen.getByRole("img", { name: "Cost composition" })
+    ).toBeInTheDocument()
+    // 輸入 4、輸出 20、快取寫入 8 + 5、快取讀取 2
+    for (const value of ["$4.00", "$20.00", "$13.00", "$2.00"]) {
+      expect(screen.getByText(value)).toBeInTheDocument()
+    }
+    // 讀取省下 10 × 3.8 = 38，扣掉寫入加價 (8 − 4) + (5 − 4)
+    expect(
+      screen.getByText(
+        "Caching saved $33.00 vs. no cache (net of the cache-write premium)"
+      )
+    ).toBeInTheDocument()
+  })
+
+  it("reuses per-model reports until the data changes", async () => {
+    const { rerender } = renderSection()
+    await screen.findAllByText("$39.00")
+    expect(tokenUsageReport).toHaveBeenCalledTimes(1)
+
+    // 頁面重新整理拿到同樣的數字（新的物件）：不重查
+    rerender(section({ ...main }))
+    await waitFor(() =>
+      expect(screen.queryByLabelText("Computing costs…")).toBeNull()
+    )
+    expect(tokenUsageReport).toHaveBeenCalledTimes(1)
+
+    // 有新的用量：重查
+    rerender(section({ ...main, last_activity_at: "2026-10-08T09:00:00Z" }))
+    await waitFor(() => expect(tokenUsageReport).toHaveBeenCalledTimes(2))
   })
 
   it("breaks the cost down by agent", async () => {
