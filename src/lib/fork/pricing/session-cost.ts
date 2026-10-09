@@ -49,6 +49,8 @@ export interface LoadedUsage {
   firstModel: string | null
   /** 已載入的回合從會話的第一個回合開始（沒有更早、未載入的回合） */
   coversStart: boolean
+  /** 已載入、有用量的回合數 */
+  turns: number
 }
 
 export function loadedUsageOf(
@@ -57,15 +59,17 @@ export function loadedUsageOf(
 ): LoadedUsage {
   const perModel: ModelUsage = new Map()
   let firstModel: string | null = null
+  let counted = 0
   for (const turn of turns) {
     if (turn.model && firstModel === null) firstModel = turn.model
-    if (!turn.usage) continue
+    if (!turn.usage || tokensOf(turn.usage) === 0) continue
+    counted++
     const model = turn.model || UNKNOWN_MODEL
     const sum = { ...(perModel.get(model) ?? ZERO) }
     for (const kind of KINDS) sum[kind] += turn.usage[kind]
     perModel.set(model, sum)
   }
-  return { perModel, firstModel, coversStart }
+  return { perModel, firstModel, coversStart, turns: counted }
 }
 
 export interface SessionUsageSplit {
@@ -144,9 +148,25 @@ function counts(usage: TurnUsage): TokenCounts {
   }
 }
 
+export interface ModelCost {
+  model: string
+  cost: number
+  tokens: number
+  usage: TurnUsage
+  /** 四類 token 各花了多少 */
+  parts: CostParts
+  /** 計價用的單價，美元／百萬 token；快取寫入已依有效期限選好 */
+  rates: {
+    input: number
+    output: number
+    cacheWrite: number
+    cacheRead: number
+  }
+}
+
 export interface SessionCost {
   total: number
-  byModel: { model: string; cost: number; tokens: number }[]
+  byModel: ModelCost[]
   composition: CostParts
   unpriced: { model: string; tokens: number }[]
   /** 快取寫入依哪種有效期限計價（依會話的 agent） */
@@ -171,8 +191,21 @@ export function computeSessionCost(
       continue
     }
     const rate = cacheWriteRate(price, ttl)
-    byModel.push({ model, cost: tokenCost(counts(usage), price, rate), tokens })
-    composition = addParts(composition, costParts(counts(usage), price, rate))
+    const parts = costParts(counts(usage), price, rate)
+    byModel.push({
+      model,
+      cost: tokenCost(counts(usage), price, rate),
+      tokens,
+      usage,
+      parts,
+      rates: {
+        input: price.input,
+        output: price.output,
+        cacheWrite: rate,
+        cacheRead: price.cacheRead ?? price.input,
+      },
+    })
+    composition = addParts(composition, parts)
   }
   byModel.sort((a, b) => b.cost - a.cost)
   unpriced.sort((a, b) => b.tokens - a.tokens)

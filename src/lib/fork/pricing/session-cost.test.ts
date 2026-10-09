@@ -49,7 +49,12 @@ const loaded = (
   entries: [string, TurnUsage][],
   firstModel: string | null,
   coversStart: boolean
-): LoadedUsage => ({ perModel: new Map(entries), firstModel, coversStart })
+): LoadedUsage => ({
+  perModel: new Map(entries),
+  firstModel,
+  coversStart,
+  turns: entries.length,
+})
 
 describe("loadedUsageOf", () => {
   it("adds up each model's turns and remembers the earliest model", () => {
@@ -67,6 +72,8 @@ describe("loadedUsageOf", () => {
     )
     expect(result.firstModel).toBe(SONNET)
     expect(result.coversStart).toBe(true)
+    // 有用量的回合
+    expect(result.turns).toBe(4)
     expect([...result.perModel]).toEqual([
       [SONNET, usage(2, 3, 4, 5)],
       [OPUS, usage(10, 20, 30, 40)],
@@ -199,6 +206,19 @@ describe("computeSessionCost", () => {
     expect(cost.composition.cacheWrite).toBeCloseTo(5)
     expect(cost.composition.cacheRead).toBeCloseTo(15)
     expect(cost.ttl).toBe("1h")
+  })
+
+  it("keeps each model's tokens, rates and per-kind cost for the breakdown", () => {
+    const [opus] = cost.byModel
+    expect(opus.usage).toEqual(usage(2 * M, 1 * M, 0.5 * M, 30 * M))
+    expect(opus.rates).toEqual({
+      input: 5,
+      output: 25,
+      cacheWrite: 10,
+      cacheRead: 0.5,
+    })
+    expect(opus.parts.cacheWrite).toBeCloseTo(5)
+    expect(opus.parts.cacheRead).toBeCloseTo(15)
   })
 
   it("lists usage it can't price instead of counting it as free", () => {

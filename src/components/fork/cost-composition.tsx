@@ -40,24 +40,31 @@ const COPY = {
   },
 } as const
 
+/** 四類 token 的顏色（要在 `.tu-viz` 底下才有值） */
+export const KIND_COLORS = {
+  cacheRead: ACCENT,
+  input: INK,
+  cacheWrite: INK_SOFT,
+  output: INK_FAINT,
+} as const
+
 export function CostComposition({
   parts,
   className,
   compact = false,
+  legend = true,
 }: {
   parts: CostParts
   className?: string
   /** 細一點的條，用在展開的明細裡 */
   compact?: boolean
+  /** 圖例（各類的金額）；旁邊另有明細時可以不顯示 */
+  legend?: boolean
 }) {
   const locale = useLocale()
   const copy = locale in COPY ? COPY[locale as keyof typeof COPY] : COPY.en
-  const segments = [
-    { key: "cacheRead" as const, value: parts.cacheRead, color: ACCENT },
-    { key: "input" as const, value: parts.input, color: INK },
-    { key: "cacheWrite" as const, value: parts.cacheWrite, color: INK_SOFT },
-    { key: "output" as const, value: parts.output, color: INK_FAINT },
-  ]
+  const segments = (["cacheRead", "input", "cacheWrite", "output"] as const)
+    .map((key) => ({ key, value: parts[key], color: KIND_COLORS[key] }))
     .filter((s) => s.value > 0)
     .sort((a, b) => b.value - a.value)
   // flex-grow 的總和小於 1 時填不滿，所以換算成百分比
@@ -84,21 +91,23 @@ export function CostComposition({
           />
         ))}
       </div>
-      <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        {segments.map((s) => (
-          <li key={s.key} className="flex items-center gap-1.5">
-            <span
-              aria-hidden="true"
-              className="size-2 rounded-[2px]"
-              style={{ backgroundColor: s.color }}
-            />
-            {copy[s.key]}
-            <span className="font-mono tabular-nums text-foreground">
-              {formatUsd(s.value, locale)}
-            </span>
-          </li>
-        ))}
-      </ul>
+      {legend && (
+        <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          {segments.map((s) => (
+            <li key={s.key} className="flex items-center gap-1.5">
+              <span
+                aria-hidden="true"
+                className="size-2 rounded-[2px]"
+                style={{ backgroundColor: s.color }}
+              />
+              {copy[s.key]}
+              <span className="font-mono tabular-nums text-foreground">
+                {formatUsd(s.value, locale)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }

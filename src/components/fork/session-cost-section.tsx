@@ -6,12 +6,15 @@
 // （開著的會話的時間軸），不另外讀網路（見 @/lib/fork/pricing/session-cost）。
 // 與會話詳情的耦合只有它傳進來的摘要、統計、模型與是否顯示中；版面沿用它的
 // InfoItem。
+//
+// 每個計價的模型都列出來（只有一個也列，才看得出以哪個模型計價），底下是
+// 四類 token 的「數量 × 單價 = 金額」，算法一目了然。
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { Loader2 } from "lucide-react"
 import { useLocale } from "next-intl"
 import { useTabStore } from "@/contexts/tab-context"
 import { useModelLabels } from "@/hooks/use-model-labels"
-import { formatUsd } from "@/lib/fork/pricing/format"
+import { formatRate, formatUsd } from "@/lib/fork/pricing/format"
 import { loadPriceTable, type PriceTable } from "@/lib/fork/pricing/pricing"
 import {
   computeSessionCost,
@@ -20,8 +23,10 @@ import {
   UNKNOWN_MODEL,
   type LoadedUsage,
 } from "@/lib/fork/pricing/session-cost"
-import { CostComposition } from "@/components/fork/cost-composition"
-import { ACCENT } from "@/components/token-usage/charts"
+import {
+  CostComposition,
+  KIND_COLORS,
+} from "@/components/fork/cost-composition"
 import { formatTokenCount } from "@/lib/token-format"
 import type {
   DbConversationSummary,
@@ -40,12 +45,19 @@ const COPY = {
     heading: "費用（API 牌價等值）",
     total: "總計",
     approx: "約",
-    byModel: "依模型",
+    kinds: {
+      input: "輸入",
+      output: "輸出",
+      cacheWrite: "快取寫入",
+      cacheRead: "快取讀取",
+    },
+    turns: (_n: number, count: string, v: string) =>
+      `${count} 回合，平均每回合 ${v}`,
     loading: "計算費用中…",
     failed: "費用計算失敗",
     unknownModel: "未記錄模型",
-    note: (ttl: string) =>
-      `以官方 API 單價換算，不是實際帳單。快取寫入以 ${ttl} 計。`,
+    note: (ttl: string, source: string) =>
+      `以官方 API 單價換算（${source}），不是實際帳單。單價為每百萬 token；快取寫入以 ${ttl} 計。`,
     ttl: { "1h": "1 小時", "5m": "5 分鐘" },
     unpriced: (list: string) => `未計價（查不到單價）：${list}`,
     assumed: (model: string) =>
@@ -56,12 +68,19 @@ const COPY = {
     heading: "费用（API 牌价等值）",
     total: "总计",
     approx: "约",
-    byModel: "按模型",
+    kinds: {
+      input: "输入",
+      output: "输出",
+      cacheWrite: "缓存写入",
+      cacheRead: "缓存读取",
+    },
+    turns: (_n: number, count: string, v: string) =>
+      `${count} 轮，平均每轮 ${v}`,
     loading: "计算费用中…",
     failed: "费用计算失败",
     unknownModel: "未记录模型",
-    note: (ttl: string) =>
-      `以官方 API 单价换算，不是实际账单。缓存写入以 ${ttl} 计。`,
+    note: (ttl: string, source: string) =>
+      `以官方 API 单价换算（${source}），不是实际账单。单价为每百万 token；缓存写入以 ${ttl} 计。`,
     ttl: { "1h": "1 小时", "5m": "5 分钟" },
     unpriced: (list: string) => `未计价（查不到单价）：${list}`,
     assumed: (model: string) =>
@@ -72,12 +91,19 @@ const COPY = {
     heading: "Cost (API list-price equivalent)",
     total: "Total",
     approx: "≈",
-    byModel: "By model",
+    kinds: {
+      input: "Input",
+      output: "Output",
+      cacheWrite: "Cache write",
+      cacheRead: "Cache read",
+    },
+    turns: (n: number, count: string, v: string) =>
+      `${count} ${n === 1 ? "turn" : "turns"}, ${v} per turn on average`,
     loading: "Computing cost…",
     failed: "Couldn't compute the cost",
     unknownModel: "No model recorded",
-    note: (ttl: string) =>
-      `Priced at official API rates — not your bill. Cache writes at the ${ttl} rate.`,
+    note: (ttl: string, source: string) =>
+      `Priced at official API rates (${source}) — not your bill. Rates are per million tokens; cache writes at the ${ttl} rate.`,
     ttl: { "1h": "1-hour", "5m": "5-minute" },
     unpriced: (list: string) => `Not priced (no known rate): ${list}`,
     assumed: (model: string) =>
@@ -127,18 +153,20 @@ function loadedUsageKey(state: RuntimeState, runtimeId: number): string {
   return JSON.stringify([
     loaded.coversStart,
     loaded.firstModel,
+    loaded.turns,
     [...loaded.perModel],
   ])
 }
 
 function parseLoadedUsage(key: string): LoadedUsage | null {
   if (!key) return null
-  const [coversStart, firstModel, perModel] = JSON.parse(key) as [
+  const [coversStart, firstModel, turns, perModel] = JSON.parse(key) as [
     boolean,
     string | null,
+    number,
     [string, TurnUsage][],
   ]
-  return { coversStart, firstModel, perModel: new Map(perModel) }
+  return { coversStart, firstModel, turns, perModel: new Map(perModel) }
 }
 
 /** 沒有執行期狀態（會話沒開著）：全部以目前的模型計 */
@@ -146,7 +174,15 @@ const NOTHING_LOADED: LoadedUsage = {
   perModel: new Map(),
   firstModel: null,
   coversStart: true,
+  turns: 0,
 }
+
+const KINDS = [
+  { key: "input", tokens: "input_tokens" },
+  { key: "output", tokens: "output_tokens" },
+  { key: "cacheWrite", tokens: "cache_creation_input_tokens" },
+  { key: "cacheRead", tokens: "cache_read_input_tokens" },
+] as const
 
 export function SessionCostSection({
   summary,
@@ -233,46 +269,61 @@ export function SessionCostSection({
               {formatUsd(result.cost.total, locale)}
             </InfoItem>
           </dl>
-          <CostComposition parts={result.cost.composition} />
-          {result.cost.byModel.length > 1 && (
-            <div className="space-y-1.5">
-              <div className="text-xs text-muted-foreground">
-                {copy.byModel}
-              </div>
-              <ul className="tu-viz space-y-2">
-                {result.cost.byModel.map((m) => {
-                  const share =
-                    result.cost.total > 0 ? m.cost / result.cost.total : 0
-                  return (
-                    <li key={m.model}>
-                      <div className="flex items-baseline gap-2">
-                        <span className="min-w-0 flex-1 truncate">
-                          {name(m.model)}
-                        </span>
-                        <span className="shrink-0 text-xs text-muted-foreground">
-                          {formatTokenCount(m.tokens)}
-                        </span>
-                        <span className={`shrink-0 ${numeric}`}>
-                          {formatUsd(m.cost, locale)}
-                        </span>
-                        <span className="w-10 shrink-0 text-right font-mono text-[0.6875rem] tabular-nums text-muted-foreground">
-                          {`${(share * 100).toFixed(0)}%`}
-                        </span>
-                      </div>
-                      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted/70">
-                        <div
-                          className="h-full rounded-full"
-                          style={{
-                            width: `${Math.max(share * 100, 1.5)}%`,
-                            backgroundColor: ACCENT,
-                          }}
+          <CostComposition
+            parts={result.cost.composition}
+            // 只有一個模型時，下面的明細就是圖例
+            legend={result.cost.byModel.length > 1}
+          />
+          <ul className="tu-viz space-y-3">
+            {result.cost.byModel.map((m) => (
+              <li key={m.model} className="min-w-0">
+                <div className="flex items-baseline gap-2">
+                  <span className="min-w-0 flex-1 truncate font-medium">
+                    {name(m.model)}
+                  </span>
+                  <span className={`shrink-0 ${numeric}`}>
+                    {formatUsd(m.cost, locale)}
+                  </span>
+                  {result.cost.byModel.length > 1 && (
+                    <span className="w-9 shrink-0 text-right font-mono text-[0.6875rem] tabular-nums text-muted-foreground">
+                      {result.cost.total > 0
+                        ? `${Math.round((m.cost / result.cost.total) * 100)}%`
+                        : ""}
+                    </span>
+                  )}
+                </div>
+                <dl className="mt-1.5 grid grid-cols-[auto_1fr_auto] items-baseline gap-x-2 gap-y-1 text-xs">
+                  {KINDS.filter((k) => m.usage[k.tokens] > 0).map((k) => (
+                    <div key={k.key} className="contents">
+                      <dt className="flex items-center gap-1.5 text-muted-foreground">
+                        <span
+                          aria-hidden="true"
+                          className="size-2 shrink-0 rounded-[2px]"
+                          style={{ backgroundColor: KIND_COLORS[k.key] }}
                         />
-                      </div>
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
+                        {copy.kinds[k.key]}
+                      </dt>
+                      <dd className="min-w-0 truncate text-right font-mono tabular-nums text-muted-foreground">
+                        {formatTokenCount(m.usage[k.tokens])} ×{" "}
+                        {formatRate(m.rates[k.key], locale)}
+                      </dd>
+                      <dd className="text-right font-mono tabular-nums">
+                        {formatUsd(m.parts[k.key], locale)}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </li>
+            ))}
+          </ul>
+          {loaded?.coversStart && loaded.turns > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {copy.turns(
+                loaded.turns,
+                loaded.turns.toLocaleString(locale),
+                formatUsd(result.cost.total / loaded.turns, locale)
+              )}
+            </p>
           )}
           <div className="space-y-1 text-xs leading-relaxed text-muted-foreground">
             {result.cost.unpriced.length > 0 && (
@@ -285,7 +336,15 @@ export function SessionCostSection({
             {!result.split.complete && result.split.restModel && (
               <p>{copy.assumed(name(result.split.restModel))}</p>
             )}
-            <p>{copy.note(copy.ttl[result.cost.ttl])}</p>
+            <p>
+              {copy.note(
+                copy.ttl[result.cost.ttl],
+                `LiteLLM ${
+                  (prices?.updatedAt ?? "").slice(0, 10) ||
+                  prices?.revision.slice(0, 7)
+                }`
+              )}
+            </p>
           </div>
         </div>
       )}

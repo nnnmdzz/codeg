@@ -127,16 +127,28 @@ describe("SessionCostSection", () => {
 
   it("prices a session that isn't open at its model, without fetching", async () => {
     renderSection(OPUS_USAGE, OPUS)
-    expect(await screen.findByText("$55.00")).toBeInTheDocument()
+    // 總計與模型那一列
+    expect(await screen.findAllByText("$55.00")).toHaveLength(2)
     expect(
       screen.getByRole("img", { name: "Cost composition" })
     ).toBeInTheDocument()
+    // 只有一個模型也列出來，底下是「數量 × 單價 = 金額」
+    expect(screen.getByText(OPUS)).toBeInTheDocument()
+    expect(screen.getByText("2M × $5")).toBeInTheDocument()
     expect(screen.getByText("$10.00")).toBeInTheDocument()
+    expect(screen.getByText("1M × $25")).toBeInTheDocument()
     expect(screen.getByText("$25.00")).toBeInTheDocument()
+    expect(screen.getByText("500K × $10")).toBeInTheDocument()
     expect(screen.getByText("$5.00")).toBeInTheDocument()
+    expect(screen.getByText("30M × $0.50")).toBeInTheDocument()
     expect(screen.getByText("$15.00")).toBeInTheDocument()
-    expect(screen.queryByText("By model")).toBeNull()
-    expect(screen.getByText(/Cache writes at the 1-hour rate/)).toBeVisible()
+    // 會話沒開著，不知道回合數
+    expect(screen.queryByText(/per turn/)).toBeNull()
+    expect(
+      screen.getByText(
+        "Priced at official API rates (LiteLLM 2026-10-09) — not your bill. Rates are per million tokens; cache writes at the 1-hour rate."
+      )
+    ).toBeVisible()
   })
 
   it("splits an open session by the models its loaded turns used", async () => {
@@ -145,12 +157,16 @@ describe("SessionCostSection", () => {
     runtime.sessions.set(-3, { turns: TWO_MODEL_TURNS, turnsOffset: 0 })
     renderSection(BOTH, SONNET)
     expect(await screen.findByText("$73.00")).toBeInTheDocument()
-    expect(screen.getByText("By model")).toBeInTheDocument()
     expect(screen.getByText(OPUS)).toBeInTheDocument()
+    expect(screen.getByText(SONNET)).toBeInTheDocument()
     expect(screen.getByText("$55.00")).toBeInTheDocument()
     expect(screen.getByText("$18.00")).toBeInTheDocument()
     expect(screen.getByText("75%")).toBeInTheDocument()
     expect(screen.getByText("25%")).toBeInTheDocument()
+    // 已載入的回合涵蓋整個會話：兩個有用量的回合
+    expect(
+      screen.getByText("2 turns, $36.50 per turn on average")
+    ).toBeInTheDocument()
     expect(screen.queryByText(/figures are estimates/)).toBeNull()
   })
 
