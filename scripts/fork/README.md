@@ -113,6 +113,19 @@ git cannot tell on its own — upstream's merged version replaces it).
   away mid-read. Earlier replies still fold their whole process (thinking
   included) when a new message is sent — that is upstream's thread fold, left
   as is. Test: `src/components/fork/reasoning-default-open.test.tsx`.
+- Token usage cost: a "Cost (API list-price equivalent)" section on the Token
+  Usage page — total (with the delta vs the previous period), cost per period,
+  and cost by model / agent / folder, in USD. Each model in the report gets
+  its own model-filtered report, so periods, agents and folders are priced
+  exactly instead of averaging rates. Cache writes are priced at the 1-hour
+  rate for Claude Code (measured: all of its writes are 1-hour) and the
+  5-minute rate for other agents; models without a known rate are listed as
+  unpriced, never counted as zero. Rates are a LiteLLM snapshot in
+  `src/lib/fork/pricing/prices.json`, refreshed with
+  `node scripts/fork/vendor-prices.mjs`. The only upstream touch is the
+  section's mount in `src/components/token-usage/token-usage-page.tsx`; the rest
+  is `src/components/fork/token-usage-cost-section.tsx` and
+  `src/lib/fork/pricing/`.
 - `src/lib/constants.ts`: connection keepalive every 90s instead of 30s (still
   half the backend's default 180s idle timeout). Fork-only.
 
