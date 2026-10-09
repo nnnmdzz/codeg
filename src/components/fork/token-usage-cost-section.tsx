@@ -13,7 +13,12 @@ import {
   CircleDollarSign,
   Loader2,
 } from "lucide-react"
-import { ACCENT } from "@/components/token-usage/charts"
+import {
+  ACCENT,
+  INK,
+  INK_FAINT,
+  INK_SOFT,
+} from "@/components/token-usage/charts"
 import { SegmentedFilter } from "@/components/token-usage/token-usage-filters"
 import { BrowserLink } from "@/components/ui/browser-link"
 import { tokenUsageReport } from "@/lib/api"
@@ -21,6 +26,7 @@ import { getAgentLabel } from "@/lib/custom-agents"
 import {
   loadPriceTable,
   resolveModelPrice,
+  type CostParts,
   type PriceTable,
 } from "@/lib/fork/pricing/pricing"
 import {
@@ -29,6 +35,7 @@ import {
   type CostRow,
   type TokenUsageCost,
 } from "@/lib/fork/pricing/token-usage-cost"
+import { formatUsd } from "@/lib/fork/pricing/format"
 import { formatTokenCount } from "@/lib/token-format"
 import type { AgentType, TokenUsageFilter, TokenUsageReport } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -56,6 +63,16 @@ const COPY = {
     truncated: "資料量超過上限，費用只涵蓋最近的一部分。",
     failed: "費用計算失敗：",
     loading: "計算費用中…",
+    parts: {
+      input: "輸入",
+      output: "輸出",
+      cacheWrite: "快取寫入",
+      cacheRead: "快取讀取",
+    },
+    compositionLabel: "費用組成",
+    savings: (v: string) => `與不用快取相比淨省下 ${v}（已扣掉快取寫入的加價）`,
+    savingsNegative: (v: string) =>
+      `與不用快取相比淨多花 ${v}：寫入的快取還沒被讀到幾次`,
     sep: "、",
   },
   "zh-CN": {
@@ -79,6 +96,16 @@ const COPY = {
     truncated: "数据量超过上限，费用只涵盖最近的一部分。",
     failed: "费用计算失败：",
     loading: "计算费用中…",
+    parts: {
+      input: "输入",
+      output: "输出",
+      cacheWrite: "缓存写入",
+      cacheRead: "缓存读取",
+    },
+    compositionLabel: "费用组成",
+    savings: (v: string) => `与不用缓存相比净省下 ${v}（已扣掉缓存写入的加价）`,
+    savingsNegative: (v: string) =>
+      `与不用缓存相比净多花 ${v}：写入的缓存还没被读到几次`,
     sep: "、",
   },
   en: {
@@ -104,6 +131,17 @@ const COPY = {
       "The data hit its row cap; costs cover only the most recent slice.",
     failed: "Couldn't compute costs: ",
     loading: "Computing costs…",
+    parts: {
+      input: "Input",
+      output: "Output",
+      cacheWrite: "Cache write",
+      cacheRead: "Cache read",
+    },
+    compositionLabel: "Cost composition",
+    savings: (v: string) =>
+      `Caching saved ${v} vs. no cache (net of the cache-write premium)`,
+    savingsNegative: (v: string) =>
+      `Caching cost ${v} more than no cache: the cached context has barely been reused yet`,
     sep: ", ",
   },
 } as const
@@ -120,16 +158,6 @@ const LIST_LIMIT = 8
 function useCopy(): Copy {
   const locale = useLocale()
   return locale in COPY ? COPY[locale as keyof typeof COPY] : COPY.en
-}
-
-function formatUsd(value: number, locale: string): string {
-  const digits = value > 0 && value < 0.01 ? 4 : value < 1 ? 3 : 2
-  return new Intl.NumberFormat(locale, {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  }).format(value)
 }
 
 /** `YYYY-MM-DD` → `MM/DD`，`YYYY-MM` → `YYYY/MM` */
@@ -155,6 +183,46 @@ async function mapLimit<T, R>(
     Array.from({ length: Math.min(limit, items.length) }, worker)
   )
   return out
+}
+
+/**
+ * 子報表快取：同樣的篩選條件、而主報表的數字沒變（資料沒更新），子報表也
+ * 不會變。切換篩選再切回來、頁面因事件重新整理而資料沒變時，都不必重查。
+ * 資料一變，主報表的總數跟著變，key 也就不同。
+ */
+const sliceCache = new Map<string, TokenUsageReport>()
+const SLICE_CACHE_LIMIT = 200
+
+function reportFingerprint(report: TokenUsageReport): string {
+  return JSON.stringify([
+    report.totals,
+    report.previous_totals,
+    report.last_activity_at,
+    report.range_start,
+    report.range_end,
+    report.truncated,
+  ])
+}
+
+async function fetchSlice(
+  filter: TokenUsageFilter,
+  fingerprint: string
+): Promise<TokenUsageReport> {
+  const key = `${fingerprint}|${JSON.stringify(filter)}`
+  const hit = sliceCache.get(key)
+  if (hit) return hit
+  const slice = await tokenUsageReport(filter)
+  sliceCache.set(key, slice)
+  if (sliceCache.size > SLICE_CACHE_LIMIT) {
+    const oldest = sliceCache.keys().next().value
+    if (oldest !== undefined) sliceCache.delete(oldest)
+  }
+  return slice
+}
+
+/** 測試用：清掉子報表快取 */
+export function resetCostSliceCache() {
+  sliceCache.clear()
 }
 
 interface CostState {
@@ -188,12 +256,12 @@ function useTokenUsageCost(report: TokenUsageReport, filter: CostFilter) {
         const priced = report.by_model
           .map((m) => m.key)
           .filter((key) => resolveModelPrice(key, prices) !== null)
+        const fingerprint = reportFingerprint(report)
         const entries = await mapLimit(priced, SLICE_CONCURRENCY, (model) =>
-          tokenUsageReport({
-            ...base,
-            models: [model],
-            comparePrevious: compare,
-          })
+          fetchSlice(
+            { ...base, models: [model], comparePrevious: compare },
+            fingerprint
+          )
             .then((slice) => [model, slice] as const)
             // 單一模型失敗不拖垮全部：該模型改以粗估（approximate）
             .catch(() => null)
@@ -253,6 +321,78 @@ function DeltaChip({
           : `${ratio > 0 ? "+" : ""}${Math.round(ratio * 100)}%`}
       </span>
     </span>
+  )
+}
+
+function CostComposition({
+  parts,
+  total,
+  savings,
+  locale,
+  copy,
+}: {
+  parts: CostParts
+  total: number
+  savings: number
+  locale: string
+  copy: Copy
+}) {
+  if (total <= 0) return null
+  // 顏色跟頁面的 Token 組成一致：快取讀取用強調色，其餘（新算的）用墨色各階；
+  // 顯示時依金額排序
+  const segments = [
+    { key: "cacheRead" as const, value: parts.cacheRead, color: ACCENT },
+    { key: "input" as const, value: parts.input, color: INK },
+    { key: "cacheWrite" as const, value: parts.cacheWrite, color: INK_SOFT },
+    { key: "output" as const, value: parts.output, color: INK_FAINT },
+  ]
+    .filter((s) => s.value > 0)
+    .sort((a, b) => b.value - a.value)
+  // flex-grow 的總和小於 1 時填不滿，所以換算成百分比
+  const sum = segments.reduce((acc, seg) => acc + seg.value, 0)
+  // 小於最小顯示位數的差額不提
+  const showSavings = Math.abs(savings) >= 0.0001
+  return (
+    <div className="mt-4">
+      <div
+        role="img"
+        aria-label={copy.compositionLabel}
+        className="flex h-2 w-full gap-0.5 overflow-hidden rounded-full"
+      >
+        {segments.map((s) => (
+          <div
+            key={s.key}
+            className="min-w-0.5"
+            style={{
+              flex: `${(s.value / sum) * 100} 1 0%`,
+              backgroundColor: s.color,
+            }}
+          />
+        ))}
+      </div>
+      <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        {segments.map((s) => (
+          <li key={s.key} className="flex items-center gap-1.5">
+            <span
+              aria-hidden="true"
+              className="size-2 rounded-[2px]"
+              style={{ backgroundColor: s.color }}
+            />
+            {copy.parts[s.key]}
+            <span className="font-mono tabular-nums text-foreground">
+              {formatUsd(s.value, locale)}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {showSavings && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          {savings > 0
+            ? copy.savings(formatUsd(savings, locale))
+            : copy.savingsNegative(formatUsd(-savings, locale))}
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -486,6 +626,13 @@ export function TokenUsageCostSection({
                   copy={copy}
                 />
               </div>
+              <CostComposition
+                parts={cost.composition}
+                total={cost.total}
+                savings={cost.cacheSavings}
+                locale={locale}
+                copy={copy}
+              />
               <div className="mt-5">
                 <CostTrend points={cost.series} locale={locale} copy={copy} />
               </div>

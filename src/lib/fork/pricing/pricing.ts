@@ -109,3 +109,59 @@ export function tokenCost(
     1e6
   )
 }
+
+export interface CostParts {
+  input: number
+  output: number
+  cacheWrite: number
+  cacheRead: number
+}
+
+export const NO_COST: CostParts = {
+  input: 0,
+  output: 0,
+  cacheWrite: 0,
+  cacheRead: 0,
+}
+
+/** 四類 token 各花了多少（美元），加起來等於 tokenCost。 */
+export function costParts(
+  tokens: TokenCounts,
+  price: ModelPrice,
+  cacheWritePerMillion: number
+): CostParts {
+  return {
+    input: (tokens.input_tokens * price.input) / 1e6,
+    output: (tokens.output_tokens * price.output) / 1e6,
+    cacheWrite: (tokens.cache_creation_tokens * cacheWritePerMillion) / 1e6,
+    cacheRead:
+      (tokens.cache_read_tokens * (price.cacheRead ?? price.input)) / 1e6,
+  }
+}
+
+export function addParts(a: CostParts, b: CostParts): CostParts {
+  return {
+    input: a.input + b.input,
+    output: a.output + b.output,
+    cacheWrite: a.cacheWrite + b.cacheWrite,
+    cacheRead: a.cacheRead + b.cacheRead,
+  }
+}
+
+/**
+ * 快取淨省下多少（美元）：快取讀取若以一般輸入計價會多花的，扣掉快取寫入比
+ * 一般輸入多付的部分。沒有快取時這些 token 都會是一般輸入。可能為負（寫了
+ * 快取卻很少讀到）。
+ */
+export function cacheSavings(
+  tokens: TokenCounts,
+  price: ModelPrice,
+  cacheWritePerMillion: number
+): number {
+  const read = price.cacheRead ?? price.input
+  return (
+    (tokens.cache_read_tokens * (price.input - read) -
+      tokens.cache_creation_tokens * (cacheWritePerMillion - price.input)) /
+    1e6
+  )
+}

@@ -10,10 +10,15 @@
 // 比例加權的平均單價，其餘三類照實計算。
 import type { TokenUsageBreakdownItem, TokenUsageReport } from "@/lib/types"
 import {
+  addParts,
+  cacheSavings,
   cacheTtlForAgent,
   cacheWriteRate,
+  costParts,
+  NO_COST,
   resolveModelPrice,
   tokenCost,
+  type CostParts,
   type PriceTable,
 } from "./pricing"
 
@@ -38,6 +43,10 @@ export interface TokenUsageCost {
   byAgent: CostRow[]
   byFolder: CostRow[]
   series: CostPoint[]
+  /** 四類 token 各花了多少，加起來等於 total */
+  composition: CostParts
+  /** 快取淨省下的金額（見 cacheSavings）；可能為負 */
+  cacheSavings: number
   /** 查不到單價、未計入費用的模型 */
   unpriced: {
     models: { key: string; tokens: number }[]
@@ -83,6 +92,8 @@ export function computeTokenUsageCost(
   let approximate = false
   let truncated = main.truncated
   const unpriced: { key: string; tokens: number }[] = []
+  let composition = NO_COST
+  let savings = 0
 
   for (const item of main.by_model) {
     const price = resolveModelPrice(item.key, prices)
@@ -94,11 +105,10 @@ export function computeTokenUsageCost(
     const slice = slices.get(item.key)
     if (!slice) {
       approximate = true
-      add(
-        modelCost,
-        item.key,
-        tokenCost(item, price, cacheWriteRate(price, "5m"))
-      )
+      const rate = cacheWriteRate(price, "5m")
+      add(modelCost, item.key, tokenCost(item, price, rate))
+      composition = addParts(composition, costParts(item, price, rate))
+      savings += cacheSavings(item, price, rate)
       continue
     }
     truncated ||= slice.truncated
@@ -109,6 +119,8 @@ export function computeTokenUsageCost(
     for (const agent of slice.by_agent) {
       const rate = cacheWriteRate(price, cacheTtlForAgent(agent.key))
       const c = tokenCost(agent, price, rate)
+      composition = addParts(composition, costParts(agent, price, rate))
+      savings += cacheSavings(agent, price, rate)
       add(agentCost, agent.key, c)
       cost += c
       writeCost += agent.cache_creation_tokens * rate
@@ -142,6 +154,8 @@ export function computeTokenUsageCost(
       start: point.start,
       cost: bucketCost.get(point.bucket_key) ?? 0,
     })),
+    composition,
+    cacheSavings: savings,
     unpriced: {
       models: unpriced.sort((a, b) => b.tokens - a.tokens),
       tokens: unpricedTokens,

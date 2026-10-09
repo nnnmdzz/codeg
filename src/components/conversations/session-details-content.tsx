@@ -24,6 +24,7 @@ import { useModelLabels } from "@/hooks/use-model-labels"
 import { pickModelFromTurns } from "./active-session-details"
 import { AgentIcon } from "@/components/agent-icon"
 import { ConversationStatusDot } from "./conversation-status-dot"
+import { SessionCostSection } from "@/components/fork/session-cost-section"
 
 interface SessionDetailsContentProps {
   summary: DbConversationSummary
@@ -481,6 +482,14 @@ export function SessionDetailsContent({
           <div className="text-muted-foreground">{t("noStats")}</div>
         )}
       </section>
+
+      {/* mobile fork：費用（API 牌價等值） */}
+      <SessionCostSection
+        summary={summary}
+        stats={stats}
+        model={rawModel}
+        active={active}
+      />
 
       <section className="min-w-0 space-y-3 border-t pt-4">
         <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">

@@ -138,10 +138,22 @@ describe("computeTokenUsageCost", () => {
     expect(cost.previousTotal).toBeCloseTo(20)
   })
 
+  it("splits the cost into the four token kinds and nets out the cache", () => {
+    // 快取寫入：Claude Code 8（1 小時）+ Cline 5（5 分鐘）；快取讀取 10 × 0.2
+    expect(cost.composition.input).toBeCloseTo(4)
+    expect(cost.composition.output).toBeCloseTo(20)
+    expect(cost.composition.cacheWrite).toBeCloseTo(13)
+    expect(cost.composition.cacheRead).toBeCloseTo(2)
+    // 讀取 10M 以一般輸入計要 40、實付 2，省 38；寫入比一般輸入多付 (8 − 4) + (5 − 4)
+    expect(cost.cacheSavings).toBeCloseTo(38 - 4 - 1)
+  })
+
   it("estimates a model whose per-model report didn't load, and says so", () => {
     const partial = computeTokenUsageCost(main, new Map(), PRICES)
     expect(partial.approximate).toBe(true)
     // 沒有 agent 細分時，快取寫入以 5 分鐘價（5）粗估：4 + 20 + 2 × 5 + 10 × 0.2
     expect(partial.total).toBeCloseTo(36)
+    expect(partial.composition.cacheWrite).toBeCloseTo(10)
+    expect(partial.cacheSavings).toBeCloseTo(38 - 2)
   })
 })
