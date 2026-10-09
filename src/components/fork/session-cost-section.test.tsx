@@ -128,6 +128,9 @@ describe("SessionCostSection", () => {
   it("prices a session that isn't open at its model, without fetching", async () => {
     renderSection(OPUS_USAGE, OPUS)
     expect(await screen.findByText("$55.00")).toBeInTheDocument()
+    expect(
+      screen.getByRole("img", { name: "Cost composition" })
+    ).toBeInTheDocument()
     expect(screen.getByText("$10.00")).toBeInTheDocument()
     expect(screen.getByText("$25.00")).toBeInTheDocument()
     expect(screen.getByText("$5.00")).toBeInTheDocument()
@@ -146,6 +149,8 @@ describe("SessionCostSection", () => {
     expect(screen.getByText(OPUS)).toBeInTheDocument()
     expect(screen.getByText("$55.00")).toBeInTheDocument()
     expect(screen.getByText("$18.00")).toBeInTheDocument()
+    expect(screen.getByText("75%")).toBeInTheDocument()
+    expect(screen.getByText("25%")).toBeInTheDocument()
     expect(screen.queryByText(/figures are estimates/)).toBeNull()
   })
 

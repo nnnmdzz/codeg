@@ -36,6 +36,7 @@ import { LiveTurnStats } from "./live-turn-stats"
 import { ModelLabelProvider } from "./model-label-context"
 import { KnownInvocationsProvider } from "./known-invocations-context"
 import { useTranscriptKnownInvocations } from "./use-transcript-known-invocations"
+import { ReplyCostAgentProvider } from "@/components/fork/reply-cost"
 import { ReplyArtifacts } from "./reply-artifacts"
 import { UserResourceLinks } from "./user-resource-links"
 import { UserImageAttachments } from "./user-image-attachments"
@@ -1809,9 +1810,12 @@ export function MessageListView({
   return (
     <MarkdownImageProvider rootPath={resolvedImageRoot}>
       <ModelLabelProvider value={modelLabel}>
-        <KnownInvocationsProvider value={knownInvocations}>
-          {thread}
-        </KnownInvocationsProvider>
+        {/* mobile fork：每則回覆的費用依 agent 計價 */}
+        <ReplyCostAgentProvider value={agentType}>
+          <KnownInvocationsProvider value={knownInvocations}>
+            {thread}
+          </KnownInvocationsProvider>
+        </ReplyCostAgentProvider>
       </ModelLabelProvider>
     </MarkdownImageProvider>
   )

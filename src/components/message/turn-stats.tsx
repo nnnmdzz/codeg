@@ -21,6 +21,7 @@ import { useMessageScroll } from "@/components/message/message-scroll-context"
 import { useChatAnimationsEnabled } from "@/hooks/use-appearance"
 import { useModelLabel } from "@/components/message/model-label-context"
 import { useCreateTaskFromMessage } from "./use-create-task-from-message"
+import { ReplyCost } from "@/components/fork/reply-cost"
 import { formatTokenCount } from "@/lib/token-format"
 import { cn, copyTextToClipboard } from "@/lib/utils"
 import type { TurnUsage } from "@/lib/types"
@@ -314,6 +315,10 @@ export function TurnStats({
               </div>
             </TooltipContent>
           </Tooltip>
+        )}
+        {/* mobile fork：這則回覆的費用 */}
+        {hasTokenCounts && (
+          <ReplyCost usage={usage} model={model} models={models} />
         )}
         {hasJump && (
           <Tooltip>

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { act, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { NextIntlClientProvider } from "next-intl"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -46,6 +46,17 @@ function report(over: Partial<TokenUsageReport>): TokenUsageReport {
 
 const opus = report({
   by_agent: [item("claude_code", M, M, M, 10 * M), item("cline", 0, 0, M, 0)],
+  top_conversations: [
+    {
+      conversation_id: 7,
+      title: "Fix login",
+      agent_type: "claude_code",
+      folder_label: "work",
+      total_tokens: 6.5 * M,
+      turn_count: 4,
+      last_activity_at: "2026-10-01T09:00:00Z",
+    },
+  ],
   by_folder: [item("1", M, M, 2 * M, 10 * M)],
   series: [
     {
@@ -73,7 +84,23 @@ const tokenUsageReport = vi.hoisted(() =>
     throw new Error("unexpected model")
   })
 )
-vi.mock("@/lib/api", () => ({ tokenUsageReport }))
+// 會話 7 的總用量：1M 輸入、0.25M 輸出、0.25M 快取寫入、5M 快取讀取（6.5M）
+const getFolderConversation = vi.hoisted(() =>
+  vi.fn(async (id: number) => ({
+    summary: { id },
+    turns: [],
+    session_stats: {
+      total_usage: {
+        input_tokens: 1_000_000,
+        output_tokens: 250_000,
+        cache_creation_input_tokens: 250_000,
+        cache_read_input_tokens: 5_000_000,
+      },
+      total_duration_ms: 0,
+    },
+  }))
+)
+vi.mock("@/lib/api", () => ({ tokenUsageReport, getFolderConversation }))
 vi.mock("@/lib/fork/pricing/pricing", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/fork/pricing/pricing")>()),
   loadPriceTable: async () => ({
@@ -87,6 +114,7 @@ vi.mock("@/lib/fork/pricing/pricing", async (importOriginal) => ({
 import enMessages from "@/i18n/messages/en.json"
 import {
   resetCostSliceCache,
+  resetSessionTotalsCache,
   TokenUsageCostSection,
 } from "./token-usage-cost-section"
 
@@ -114,7 +142,9 @@ function renderSection() {
 describe("TokenUsageCostSection", () => {
   beforeEach(() => {
     resetCostSliceCache()
+    resetSessionTotalsCache()
     tokenUsageReport.mockClear()
+    getFolderConversation.mockClear()
   })
 
   it("prices each model through its own report and shows the total", async () => {
@@ -164,6 +194,57 @@ describe("TokenUsageCostSection", () => {
     // 有新的用量：重查
     rerender(section({ ...main, last_activity_at: "2026-10-08T09:00:00Z" }))
     await waitFor(() => expect(tokenUsageReport).toHaveBeenCalledTimes(2))
+  })
+
+  it("opens a model into its kinds, agents and unit costs", async () => {
+    const user = userEvent.setup()
+    renderSection()
+    await screen.findAllByText("$39.00")
+    const row = screen.getByRole("button", { name: /claude-opus-5-5/ })
+    expect(row).toHaveAttribute("aria-expanded", "false")
+    await user.click(row)
+    expect(row).toHaveAttribute("aria-expanded", "true")
+    const detail = document.getElementById(row.getAttribute("aria-controls")!)!
+    expect(detail).toHaveTextContent("Agents: Claude Code $34.00 · Cline $5.00")
+    expect(detail).toHaveTextContent(
+      "1 session, $39.00 each on average, 1 turn, $39.00 per turn"
+    )
+    expect(
+      within(detail).getByRole("img", { name: "Cost composition" })
+    ).toBeInTheDocument()
+    await user.click(row)
+    expect(row).toHaveAttribute("aria-expanded", "false")
+  })
+
+  it("ranks sessions, replacing the estimate with the session's own usage", async () => {
+    const user = userEvent.setup()
+    // 會話用量先不回來，看得到估算
+    let release!: () => void
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const answer = getFolderConversation.getMockImplementation()!
+    getFolderConversation.mockImplementationOnce(async (id: number) => {
+      await held
+      return answer(id)
+    })
+    renderSection()
+    await screen.findAllByText("$39.00")
+    // 沒打開「會話」分組前不讀會話
+    expect(getFolderConversation).not.toHaveBeenCalled()
+    await user.click(screen.getByRole("button", { name: "Session" }))
+    // 先估算：Claude Code 在 Opus 每 13M token 花 34，6.5M ≈ 17
+    expect(screen.getByText("Fix login")).toBeInTheDocument()
+    expect(screen.getByText("≈ $17.00")).toBeInTheDocument()
+    expect(screen.getByText("Claude Code · work")).toBeInTheDocument()
+    expect(screen.getByText(/Priced from each session/)).toBeInTheDocument()
+    // 讀到會話用量：整段都在期間內、只用 Opus，4 + 5 + 0.25 × 8 + 5 × 0.2
+    await act(async () => release())
+    expect(await screen.findByText("$12.00")).toBeInTheDocument()
+    expect(screen.queryByText("≈ $17.00")).toBeNull()
+    expect(getFolderConversation).toHaveBeenCalledWith(7, {
+      fromIndex: Number.MAX_SAFE_INTEGER,
+    })
   })
 
   it("breaks the cost down by agent", async () => {

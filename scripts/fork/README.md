@@ -121,29 +121,52 @@ git cannot tell on its own — upstream's merged version replaces it).
   included) when a new message is sent — that is upstream's thread fold, left
   as is. Test: `src/components/fork/reasoning-default-open.test.tsx`.
 - Token usage cost: a "Cost (API list-price equivalent)" section on the Token
-  Usage page — total (with the delta vs the previous period), cost per period,
-  and cost by model / agent / folder, in USD. Each model in the report gets
-  its own model-filtered report, so periods, agents and folders are priced
-  exactly instead of averaging rates. Cache writes are priced at the 1-hour
-  rate for Claude Code (measured: all of its writes are 1-hour) and the
-  5-minute rate for other agents; models without a known rate are listed as
-  unpriced, never counted as zero. Rates are a LiteLLM snapshot in
+  Usage page — total (with the delta vs the previous period), a bar splitting
+  it into input / output / cache write / cache read, cost per period, and a
+  ranked list by model / agent / folder / session, in USD. Each model in the
+  report gets its own model-filtered report, so periods, agents and folders
+  are priced exactly instead of averaging rates; those reports also carry
+  everything the detail views need, so they cost no extra requests:
+  - a list row opens into its kind split, the other dimension (a model's
+    agents; an agent's or folder's models) and its cost per session and per
+    turn;
+  - the trend stacks the three costliest models (accent tones, the rest
+    merged), and tapping or hovering a period lists its models.
+  The Session tab ranks sessions. The report only has a token total per
+  session, so the list starts as an estimate at each agent's per-token rate
+  for the model, then — only while that tab is open, for the listed sessions,
+  two at a time, cached for the page — reads each session's own four-kind
+  totals (`getFolderConversation` with `fromIndex` past the end: no turns,
+  just stats; the server still parses the transcript). A session wholly in
+  the range on one model is then exact and matches Session Details; one that
+  crosses the range edge or used several models is split by tokens and keeps
+  its ≈. Cache writes are priced at the 1-hour rate for Claude Code
+  (measured: all of its writes are 1-hour) and the 5-minute rate for other
+  agents; models without a known rate are listed as unpriced, never counted
+  as zero. Rates are a LiteLLM snapshot in
   `src/lib/fork/pricing/prices.json`, refreshed with
-  `node scripts/fork/vendor-prices.mjs`. Under the total, a bar splits the
-  cost into input / output / cache write / cache read. Per-model reports are reused while the
-  main report's numbers are unchanged (switching filters back, refreshes with
-  no new usage). The only upstream touch is the section's mount in
+  `node scripts/fork/vendor-prices.mjs`. Per-model reports are reused while
+  the main report's numbers are unchanged (switching filters back, refreshes
+  with no new usage). The only upstream touch is the section's mount in
   `src/components/token-usage/token-usage-page.tsx`; the rest is
-  `src/components/fork/token-usage-cost-section.tsx` and
+  `src/components/fork/{token-usage-cost-section,cost-composition}.tsx` and
   `src/lib/fork/pricing/`.
+- Reply cost: each reply's cost, from its own usage and model, as small text
+  in its stats row next to the token icon (that icon's tooltip can't be
+  opened by touch). A reply merged from sub-turns on different models is
+  priced at the first one and marked ≈. Upstream touch: the agent type is
+  provided around the thread in `src/components/message/message-list-view.tsx`
+  (cache-write pricing depends on it) and the amount is one line in
+  `src/components/message/turn-stats.tsx`; the rest is
+  `src/components/fork/reply-cost.tsx`.
 - Session cost: the same pricing in Session Details (the right panel tab and
-  the dialog), under Token Usage — total, the four kinds, and a per-model
-  split when the session switched models. The amount always
-  follows the session's total usage; the split comes from turns already in
-  memory (the open conversation's timeline), never from an extra fetch —
-  transcripts run to tens of MB. Turns older than the loaded window go to the
-  earliest loaded model, flagged as an estimate when the session used more
-  than one model. Upstream touch: the mount in
+  the dialog), under Token Usage — the total, the four-kind bar, and, when
+  the session switched models, each model with its tokens, cost and share.
+  The amount always follows the session's total usage; the split comes from
+  turns already in memory (the open conversation's timeline), never from an
+  extra fetch — transcripts run to tens of MB. Turns older than the loaded
+  window go to the earliest loaded model, flagged as an estimate when the
+  session used more than one model. Upstream touch: the mount in
   `src/components/conversations/session-details-content.tsx`; the rest is
   `src/components/fork/session-cost-section.tsx` and
   `src/lib/fork/pricing/session-cost.ts`.
