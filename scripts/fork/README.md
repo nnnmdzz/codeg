@@ -90,10 +90,14 @@ git cannot tell on its own — upstream's merged version replaces it).
   heartbeat and wake-time liveness probe, and a transcript resync after the
   event stream was down. It is the fix for replies that stop half-way with the
   send button already back — a turn that ended while the stream was down (a
-  phone in the background, a socket that died without closing). Its Rust half
-  (the desktop remote proxy) is carried but unused here. One hand merge:
+  phone in the background, a socket that died without closing). Hand merges:
   `web-connection-guard.tsx`, where the fork's reconnecting pill meets #840's
-  probe (doc comment only). Once a release contains #840, drop these commits
+  probe (doc comment only); and, from v0.35.0, its desktop half is dropped —
+  v0.35.0 ships its own heartbeat for the remote proxy (`run_ws_connection`
+  in `remote_proxy.rs`), so `remote_proxy.rs`, `remote-desktop-transport.ts`
+  and `lib.rs` stay upstream's and the desktop transport has no
+  `probeLiveness` (optional in the interface). The browser half is carried
+  whole. Once a release contains #840, drop these commits
   (`git rebase --skip` if git cannot tell on its own).
 - Convert-to-Traditional button: a 「繁」 button left of Send converts the
   draft (or just the selection) from Simplified to Traditional Chinese with
