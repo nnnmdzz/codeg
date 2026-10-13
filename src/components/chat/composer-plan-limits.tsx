@@ -11,6 +11,7 @@ import {
   headlinePlanLimit,
   isPlanLimitReset,
   planLimitTone,
+  planLimitsStaleSince,
   timeUntil,
   type PlanLimitTone,
 } from "@/lib/plan-limits"
@@ -58,8 +59,9 @@ function useNowSeconds(): number {
  *
  * The figures are the agent's own — Claude reports them live and the backend
  * shares them among the agent's connections on the same settings; Codex
- * records them in its transcript (session stats). Nothing renders for API-key
- * sign-ins, which have no plan windows, or once every known window has reset.
+ * records them in its transcript (session stats), so the popover says how old
+ * they are once that is a while. Nothing renders for API-key sign-ins, which
+ * have no plan windows, or once every known window has reset.
  */
 export function ComposerPlanLimits({ tabId }: { tabId: string | null }) {
   const t = useTranslations("Folder.statusBar.planLimits")
@@ -83,8 +85,10 @@ export function ComposerPlanLimits({ tabId }: { tabId: string | null }) {
         return t("sevenDayModel", { model: "Opus" })
       case "seven_day_sonnet":
         return t("sevenDayModel", { model: "Sonnet" })
+      // A per-model weekly window too; Claude Code itself calls it the
+      // "Fable limit".
       case "seven_day_overage_included":
-        return t("sevenDayOverage")
+        return t("sevenDayModel", { model: "Fable" })
       case "overage":
         return t("overage")
     }
@@ -106,9 +110,9 @@ export function ComposerPlanLimits({ tabId }: { tabId: string | null }) {
     return t("durationSoon")
   }
 
-  // The time itself, local: "15:10" today, with the day further out.
-  const resetTime = (resetsAt: number): string => {
-    const date = new Date(resetsAt * 1000)
+  // A moment, local: "15:10" today, with the day on any other.
+  const moment = (seconds: number): string => {
+    const date = new Date(seconds * 1000)
     const today = new Date(now * 1000).toDateString() === date.toDateString()
     return new Intl.DateTimeFormat(
       locale,
@@ -124,6 +128,7 @@ export function ComposerPlanLimits({ tabId }: { tabId: string | null }) {
     ).format(date)
   }
 
+  const staleSince = planLimitsStaleSince(windows, now)
   const tone = planLimitTone(headline)
   const time = timeLeft(headline.resets_at)
   const summary =
@@ -198,7 +203,7 @@ export function ComposerPlanLimits({ tabId }: { tabId: string | null }) {
                   <div className="leading-snug text-muted-foreground tabular-nums">
                     {t("resetsIn", {
                       time: timeLeft(window.resets_at),
-                      at: resetTime(window.resets_at),
+                      at: moment(window.resets_at),
                     })}
                   </div>
                 ) : null}
@@ -206,6 +211,11 @@ export function ComposerPlanLimits({ tabId }: { tabId: string | null }) {
             )
           })}
         </div>
+        {staleSince != null ? (
+          <div className="leading-snug text-muted-foreground">
+            {t("staleNote", { at: moment(staleSince) })}
+          </div>
+        ) : null}
       </PopoverContent>
     </Popover>
   )

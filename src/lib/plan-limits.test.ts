@@ -4,7 +4,9 @@ import {
   headlinePlanLimit,
   isPlanLimitReset,
   mergePlanLimits,
+  PLAN_LIMITS_STALE_AFTER_SECONDS,
   planLimitTone,
+  planLimitsStaleSince,
   timeUntil,
 } from "./plan-limits"
 import type { PlanLimitWindow } from "@/lib/types"
@@ -110,6 +112,33 @@ describe("headlinePlanLimit", () => {
     expect(isPlanLimitReset(over, NOW)).toBe(true)
     expect(headlinePlanLimit([over, timeless, week], NOW)).toBe(week)
     expect(headlinePlanLimit([over, timeless], NOW)).toBeNull()
+  })
+})
+
+describe("planLimitsStaleSince", () => {
+  it("says nothing for figures without a recording time (Claude's live ones)", () => {
+    expect(planLimitsStaleSince([fiveHour(), weekly()], NOW)).toBeNull()
+    expect(planLimitsStaleSince([], NOW)).toBeNull()
+  })
+
+  it("stays quiet while the figures are recent", () => {
+    const recorded = NOW - PLAN_LIMITS_STALE_AFTER_SECONDS
+    expect(
+      planLimitsStaleSince([fiveHour({ observed_at: recorded })], NOW)
+    ).toBeNull()
+  })
+
+  it("names when older figures were recorded", () => {
+    const recorded = NOW - PLAN_LIMITS_STALE_AFTER_SECONDS - 1
+    expect(
+      planLimitsStaleSince(
+        [
+          fiveHour({ observed_at: recorded - 600 }),
+          weekly({ observed_at: recorded }),
+        ],
+        NOW
+      )
+    ).toBe(recorded)
   })
 })
 

@@ -144,6 +144,45 @@ describe("ComposerPlanLimits", () => {
     ).toBeInTheDocument()
   })
 
+  it("says how old recorded figures are once they are a while old", async () => {
+    // Recorded 2 h ago: other sessions may have used the plan since.
+    const recorded = NOW - 2 * 3600
+    const { unmount } = renderLimits({
+      recorded: [weekly({ observed_at: recorded })],
+    })
+    await userEvent.click(screen.getByRole("button", { name: /^Weekly/ }))
+    // The recording time, local — with the day too when that is not today,
+    // which depends on the zone the test runs in.
+    const time = new Intl.DateTimeFormat("en", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(recorded * 1000))
+    const [before, after] = copy.staleNote.split("{at}")
+    const note = screen.getByText(
+      (text) => text.startsWith(before) && text.endsWith(after)
+    )
+    expect(note.textContent).toContain(time)
+    unmount()
+
+    // Recorded a minute ago: nothing to say.
+    renderLimits({ recorded: [weekly({ observed_at: NOW - 60 })] })
+    await userEvent.click(screen.getByRole("button", { name: /^Weekly/ }))
+    expect(screen.getByText(copy.title)).toBeInTheDocument()
+    expect(screen.queryByText(/^Last updated/)).not.toBeInTheDocument()
+  })
+
+  it("names the per-model weekly window after its model", async () => {
+    renderLimits({
+      live: [
+        fiveHour(),
+        weekly({ kind: "seven_day_overage_included", used_percent: 90 }),
+      ],
+    })
+    expect(
+      screen.getByRole("button", { name: /^Weekly · Fable: 90% used/ })
+    ).toBeInTheDocument()
+  })
+
   it("marks a window that has already reset", async () => {
     renderLimits({
       live: [fiveHour({ resets_at: NOW - 60, used_percent: 97 }), weekly()],

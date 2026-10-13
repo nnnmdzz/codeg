@@ -292,7 +292,9 @@ export interface SessionStats {
  * its rollout (`SessionStats.plan_limits`). API-key sign-ins have none.
  */
 export interface PlanLimitWindow {
-  /** `five_hour`, `seven_day`, `seven_day_opus`, `seven_day_sonnet`, … */
+  /** `five_hour`, `seven_day`, the per-model weekly `seven_day_opus` /
+   *  `seven_day_sonnet` / `seven_day_overage_included` (the CLI's "Fable
+   *  limit"), `overage`, … */
   kind: string
   /** Share of the window already used, 0–100. */
   used_percent?: number | null
@@ -302,6 +304,10 @@ export interface PlanLimitWindow {
   window_minutes?: number | null
   /** Claude's verdict: `allowed`, `allowed_warning` or `rejected`. */
   status?: string | null
+  /** When the agent recorded these figures, Unix seconds. Codex only (its
+   *  rollout stamps every report); Claude reports only when a window moves,
+   *  so its live figures carry none. */
+  observed_at?: number | null
 }
 
 export interface MessageTurn {
