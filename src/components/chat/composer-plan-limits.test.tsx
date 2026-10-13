@@ -145,23 +145,26 @@ describe("ComposerPlanLimits", () => {
   })
 
   it("says how old recorded figures are once they are a while old", async () => {
-    // Recorded 2 h ago: other sessions may have used the plan since.
-    const recorded = NOW - 2 * 3600
+    // Recorded 3 days ago — another day in every zone: other sessions may
+    // have used the plan since.
+    const recorded = NOW - 3 * 86_400
     const { unmount } = renderLimits({
       recorded: [weekly({ observed_at: recorded })],
     })
     await userEvent.click(screen.getByRole("button", { name: /^Weekly/ }))
-    // The recording time, local — with the day too when that is not today,
-    // which depends on the zone the test runs in.
-    const time = new Intl.DateTimeFormat("en", {
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(new Date(recorded * 1000))
     const [before, after] = copy.staleNote.split("{at}")
     const note = screen.getByText(
       (text) => text.startsWith(before) && text.endsWith(after)
     )
-    expect(note.textContent).toContain(time)
+    // The recording moment, local: its day as well as its time.
+    const part = (options: Intl.DateTimeFormatOptions) =>
+      new Intl.DateTimeFormat("en", options).format(new Date(recorded * 1000))
+    expect(note.textContent).toContain(
+      part({ weekday: "short", month: "numeric", day: "numeric" })
+    )
+    expect(note.textContent).toContain(
+      part({ hour: "2-digit", minute: "2-digit" })
+    )
     unmount()
 
     // Recorded a minute ago: nothing to say.

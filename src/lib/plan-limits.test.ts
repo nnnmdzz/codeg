@@ -121,6 +121,10 @@ describe("planLimitsStaleSince", () => {
     expect(planLimitsStaleSince([], NOW)).toBeNull()
   })
 
+  it("waits as long as Codex does before calling figures stale", () => {
+    expect(PLAN_LIMITS_STALE_AFTER_SECONDS).toBe(15 * 60)
+  })
+
   it("stays quiet while the figures are recent", () => {
     const recorded = NOW - PLAN_LIMITS_STALE_AFTER_SECONDS
     expect(

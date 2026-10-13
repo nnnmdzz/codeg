@@ -701,7 +701,6 @@ mod tests {
         .await;
 
         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-        task.abort();
         let mut reports = 0usize;
         loop {
             match watch.try_recv() {
@@ -718,6 +717,20 @@ mod tests {
         // The two reports and at most a forward each — not a stream of flips.
         assert!(reports <= 4, "{reports} plan-limit events crossed the bus");
         assert_eq!(a.read().await.plan_limits, b.read().await.plan_limits);
+
+        // Settled, not stopped: the next report still reaches the other side.
+        let later = window("five_hour", 60.0, 2_000, 300);
+        emit_with_state(
+            &a,
+            &emitter,
+            AcpEvent::PlanLimits {
+                windows: vec![later.clone()],
+            },
+        )
+        .await;
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert_eq!(b.read().await.plan_limits, vec![later]);
+        task.abort();
     }
 
     #[tokio::test]
