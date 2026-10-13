@@ -280,6 +280,28 @@ export interface SessionStats {
   context_window_used_tokens?: number | null
   context_window_max_tokens?: number | null
   context_window_usage_percent?: number | null
+  /** The account's subscription usage windows as the transcript last recorded
+   *  them (Codex on a ChatGPT plan). Absent for every other agent. */
+  plan_limits?: PlanLimitWindow[]
+}
+
+/**
+ * One usage window of the agent account's subscription plan, as the agent
+ * itself last reported it — codeg never asks a provider for these. Claude
+ * Pro/Max report them live (`plan_limits` events); Codex on a ChatGPT plan in
+ * its rollout (`SessionStats.plan_limits`). API-key sign-ins have none.
+ */
+export interface PlanLimitWindow {
+  /** `five_hour`, `seven_day`, `seven_day_opus`, `seven_day_sonnet`, … */
+  kind: string
+  /** Share of the window already used, 0–100. */
+  used_percent?: number | null
+  /** When the window resets, Unix seconds. */
+  resets_at?: number | null
+  /** The window's length in minutes, when known. */
+  window_minutes?: number | null
+  /** Claude's verdict: `allowed`, `allowed_warning` or `rejected`. */
+  status?: string | null
 }
 
 export interface MessageTurn {
@@ -2845,6 +2867,11 @@ export type AcpEvent =
       used: number
       size: number
     }
+  /** The plan's usage windows this report covers (merged by `kind`). */
+  | {
+      type: "plan_limits"
+      windows: PlanLimitWindow[]
+    }
   /**
    * Out-of-turn activity surfaced from the agent's own session transcript by
    * the backend watcher (Claude only): async sub-agent / background-shell
@@ -3371,6 +3398,8 @@ export interface LiveSessionSnapshot {
   config_options: SessionConfigOptionInfo[] | null
   prompt_capabilities: PromptCapabilitiesInfo | null
   usage: SessionUsageUpdateInfo | null
+  /** See `PlanLimitWindow`; omitted by the backend while empty. */
+  plan_limits?: PlanLimitWindow[]
   fork_supported: boolean
   available_commands: AvailableCommandInfo[]
   selectors_ready: boolean
