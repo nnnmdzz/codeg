@@ -2,7 +2,8 @@
 
 This branch is upstream codeg at the release the server runs, plus a few
 front-end changes. Only the web client is used from it: the server stays the
-official `codeg-server` (and keeps updating itself online).
+official `codeg-server` (and keeps updating itself online) — except while a
+carried upstream PR needs its server half too (#939, below).
 
 Served side by side with the official UI, behind the same backend:
 
@@ -99,6 +100,22 @@ git cannot tell on its own — upstream's merged version replaces it).
   `probeLiveness` (optional in the interface). The browser half is carried
   whole. Once a release contains #840, drop these commits
   (`git rebase --skip` if git cannot tell on its own).
+- Upstream PR #939 ("show the plan usage reset countdown below the
+  composer"), cherry-picked as its three commits with `-x`: the subscription
+  plan's usage windows — Claude Pro/Max from what claude-agent-acp forwards on
+  `usage_update` (`_meta["_claude/rateLimit"]`), Codex from its rollout — as a
+  reset countdown left of the context-usage indicator, shared by an agent's
+  connections on the same settings. Unlike everything else here it needs the
+  server half (its first commit), so while it is carried
+  `/usr/local/bin/codeg-server` is a local build of the release tag plus that
+  commit (worktree `../codeg-plan-limits-deploy`, branch
+  `deploy/plan-limits-<version>`; the official binary is kept next to it as
+  `codeg-server.official-<version>`). The server's online update brings the
+  official binary back at the next release; the countdown then stays hidden
+  (nothing reports it) until a release contains #939, and the rebase can drop
+  these commits (`git rebase --skip` if git cannot tell on its own). Hand
+  merge: the store test file, where #939's block and the fork's own both
+  append at the end.
 - Convert-to-Traditional button: a 「繁」 button left of Send converts the
   draft (or just the selection) from Simplified to Traditional Chinese with
   Taiwan phrasing (OpenCC `s2twp`), then switches punctuation to Taiwan's
