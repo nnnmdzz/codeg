@@ -35,6 +35,7 @@ import {
   openSettingsWindow,
 } from "@/lib/api"
 import { denormalizeSnapshot } from "@/lib/snapshot-denormalize"
+import { mergePlanLimits } from "@/lib/plan-limits"
 import { buildDelegationSeedEnvelopes } from "@/lib/delegation-seed"
 import {
   isConnectionBusy,
@@ -68,6 +69,7 @@ import type {
   SessionFailureRecord,
   SessionModeStateInfo,
   SessionUsageUpdateInfo,
+  PlanLimitWindow,
   PromptCapabilitiesInfo,
   PromptInputBlock,
   ToolCallImageWire,
@@ -315,6 +317,11 @@ export interface ConnectionState {
   configOptions: SessionConfigOptionInfo[] | null
   availableCommands: AvailableCommandInfo[] | null
   usage: SessionUsageUpdateInfo | null
+  /** The account's subscription usage windows, as the agent reported them
+   *  (`plan_limits` events and snapshots). The backend keeps an agent's live
+   *  connections on the same settings on the same figures. `[]` until any
+   *  arrive. */
+  planLimits: PlanLimitWindow[]
   liveMessage: LiveMessage | null
   pendingPermission: PendingPermission | null
   /** In-flight user prompt for the current turn — set from a `user_message`
@@ -769,6 +776,11 @@ type Action =
       type: "USAGE_UPDATE"
       contextKey: string
       usage: SessionUsageUpdateInfo
+    }
+  | {
+      type: "PLAN_LIMITS"
+      contextKey: string
+      windows: PlanLimitWindow[]
     }
   | {
       type: "EVENT_APPLIED"
@@ -1734,6 +1746,7 @@ function connectionsReducer(
         configOptions: null,
         availableCommands: null,
         usage: null,
+        planLimits: [],
         liveMessage: null,
         pendingPermission: null,
         pendingUserMessage: null,
@@ -1795,6 +1808,7 @@ function connectionsReducer(
         configOptions: null,
         availableCommands: null,
         usage: null,
+        planLimits: [],
         liveMessage: null,
         pendingPermission: null,
         pendingUserMessage: null,
@@ -1882,6 +1896,13 @@ function connectionsReducer(
         current.sessionFailures,
         action.patch.sessionFailures
       )
+      // Plan windows merge on both branches for the same reason: a window only
+      // ever gives way to a newer one (see `mergePlanLimits`), so a stale
+      // snapshot can add what this client missed but never roll figures back.
+      const mergedPlanLimits = mergePlanLimits(
+        current.planLimits,
+        action.patch.planLimits
+      )
       // Async tasks contribute on both branches — a client that attached
       // mid-episode has no other way to learn about work already running — but
       // NOT by the same rule, because the rows carry no revision. On the fresh
@@ -1920,6 +1941,7 @@ function connectionsReducer(
           mergedAvailableCommands === current.availableCommands &&
           mergedPromptCapabilities === current.promptCapabilities &&
           mergedSessionFailures === current.sessionFailures &&
+          mergedPlanLimits === current.planLimits &&
           mergedAsyncTasks === current.asyncTasks
         ) {
           return state
@@ -1934,6 +1956,7 @@ function connectionsReducer(
           selectorsReady: mergedSelectorsReady,
           supportsFork: mergedSupportsFork,
           sessionFailures: mergedSessionFailures,
+          planLimits: mergedPlanLimits,
           asyncTasks: mergedAsyncTasks,
         })
         return next
@@ -1953,6 +1976,7 @@ function connectionsReducer(
         configOptions: action.patch.configOptions,
         availableCommands: action.patch.availableCommands,
         usage: action.patch.usage,
+        planLimits: mergedPlanLimits,
         liveMessage: hydratedLiveMessage,
         // The snapshot's live message REPLACES the local one, and the wire has
         // no `steering` block (the backend never records one — see
@@ -3007,6 +3031,16 @@ function connectionsReducer(
         ...conn,
         availableCommands: commands,
       })
+      return next
+    }
+
+    case "PLAN_LIMITS": {
+      const conn = state.get(action.contextKey)
+      if (!conn) return state
+      const planLimits = mergePlanLimits(conn.planLimits, action.windows)
+      if (planLimits === conn.planLimits) return state
+      const next = new Map(state)
+      next.set(action.contextKey, { ...conn, planLimits })
       return next
     }
 
@@ -5773,6 +5807,13 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
               used: e.used,
               size: e.size,
             },
+          })
+          break
+        case "plan_limits":
+          dispatch({
+            type: "PLAN_LIMITS",
+            contextKey,
+            windows: e.windows,
           })
           break
       }
