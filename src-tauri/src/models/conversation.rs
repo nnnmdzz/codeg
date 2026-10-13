@@ -109,6 +109,37 @@ pub struct SessionStats {
     pub context_window_max_tokens: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context_window_usage_percent: Option<f64>,
+    /// The account's subscription usage windows as the transcript last recorded
+    /// them (Codex on a ChatGPT plan writes them into its rollout). Empty for
+    /// every other agent, and for API-key sign-ins.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub plan_limits: Vec<PlanLimitWindow>,
+}
+
+/// One usage window of the agent account's subscription plan, exactly as the
+/// agent itself last reported it — codeg never asks a provider for these.
+/// Claude Pro/Max report them over ACP and Codex on a ChatGPT plan in its
+/// rollout (see `acp::plan_limits`); API-key sign-ins have none.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlanLimitWindow {
+    /// Which window: Claude's own ids (`five_hour`, `seven_day`,
+    /// `seven_day_opus`, `seven_day_sonnet`, …); Codex windows are named the
+    /// same way from their length (`five_hour`, `seven_day`), else
+    /// `window_<minutes>m`.
+    pub kind: String,
+    /// Share of the window already used, 0–100.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub used_percent: Option<f64>,
+    /// When the window resets, in Unix seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resets_at: Option<i64>,
+    /// The window's length in minutes, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_minutes: Option<u64>,
+    /// Claude's verdict for the window: `allowed`, `allowed_warning` (close
+    /// to the limit) or `rejected` (at the limit until it resets).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -3118,6 +3118,9 @@ impl CodexParser {
         let mut context_window_max_tokens: Option<u64> = None;
         let mut latest_total_usage: Option<TurnUsage> = None;
         let mut latest_total_tokens: Option<u64> = None;
+        // The plan's usage windows as of the latest `token_count` that carried
+        // any (`payload.rate_limits`; ChatGPT-plan sign-ins only).
+        let mut latest_plan_limits = Vec::new();
         // Cumulative `total_token_usage` as of the previous `token_count`, so
         // each event can be reduced to what its own round-trip added.
         let mut previous_total_usage: Option<TurnUsage> = None;
@@ -3859,6 +3862,17 @@ impl CodexParser {
                                 }
                             }
                             "token_count" => {
+                                if let Some(rate_limits) =
+                                    payload.get("rate_limits").filter(|v| !v.is_null())
+                                {
+                                    let windows = crate::acp::plan_limits::codex_plan_limits(
+                                        rate_limits,
+                                        parse_codex_timestamp(&value),
+                                    );
+                                    if !windows.is_empty() {
+                                        latest_plan_limits = windows;
+                                    }
+                                }
                                 if let Some(info) = payload.get("info") {
                                     if let Some(total_usage_payload) = info.get("total_token_usage")
                                     {
@@ -5230,6 +5244,9 @@ impl CodexParser {
             context_window_used_tokens,
             context_window_max_tokens,
         );
+        if let Some(stats) = session_stats.as_mut() {
+            stats.plan_limits = latest_plan_limits;
+        }
 
         let summary = ConversationSummary {
             id: conversation_id.to_string(),
@@ -5496,6 +5513,7 @@ fn merge_codex_context_window_stats(
             context_window_used_tokens: used_tokens,
             context_window_max_tokens: max_tokens,
             context_window_usage_percent: usage_percent,
+            plan_limits: Vec::new(),
         }),
     }
 }
@@ -5522,6 +5540,7 @@ fn merge_codex_total_usage_stats(
             context_window_used_tokens: None,
             context_window_max_tokens: None,
             context_window_usage_percent: None,
+            plan_limits: Vec::new(),
         }),
         None => None,
     }
@@ -9046,6 +9065,7 @@ mod tests {
             context_window_used_tokens: None,
             context_window_max_tokens: None,
             context_window_usage_percent: None,
+            plan_limits: Vec::new(),
         };
         let total = TurnUsage {
             input_tokens: 100,
@@ -9076,6 +9096,46 @@ mod tests {
             .context_window_usage_percent
             .expect("context window percent present");
         assert!((pct - 30.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn parse_detail_keeps_the_latest_plan_limits_a_token_count_recorded() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time ok")
+            .as_nanos();
+        let path: PathBuf = env::temp_dir().join(format!("codeg-codex-limits-{nanos}.jsonl"));
+
+        // Two reports, then one that carries no plan (null windows): the
+        // session keeps the newest report that said something.
+        let content = concat!(
+            "{\"timestamp\":\"2026-03-01T10:00:00Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"limits-1\",\"cwd\":\"/tmp/demo\"}}\n",
+            "{\"timestamp\":\"2026-03-01T10:00:01Z\",\"type\":\"turn_context\",\"payload\":{\"model\":\"gpt-5-codex\"}}\n",
+            "{\"timestamp\":\"2026-03-01T10:00:02Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"agent_message\",\"message\":\"done\"}}\n",
+            "{\"timestamp\":\"2026-03-01T10:00:03Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"total_tokens\":170,\"input_tokens\":100,\"cached_input_tokens\":50,\"output_tokens\":20}},\"rate_limits\":{\"limit_id\":\"codex\",\"primary\":{\"used_percent\":10.0,\"window_minutes\":300,\"resets_at\":1772366400},\"secondary\":{\"used_percent\":40.0,\"window_minutes\":10080,\"resets_at\":1772900000}}}}\n",
+            "{\"timestamp\":\"2026-03-01T10:05:00Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"total_tokens\":340,\"input_tokens\":200,\"cached_input_tokens\":100,\"output_tokens\":40}},\"rate_limits\":{\"limit_id\":\"codex\",\"primary\":{\"used_percent\":12.5,\"window_minutes\":300,\"resets_at\":1772366400},\"secondary\":{\"used_percent\":41.0,\"window_minutes\":10080,\"resets_at\":1772900000}}}}\n",
+            "{\"timestamp\":\"2026-03-01T10:06:00Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":null,\"rate_limits\":{\"limit_id\":\"codex\",\"primary\":null,\"secondary\":null}}}\n"
+        );
+        fs::write(&path, content).expect("write test jsonl");
+
+        let detail = CodexParser::new()
+            .parse_conversation_detail(&path, "limits-1")
+            .expect("parse detail ok");
+        let _ = fs::remove_file(&path);
+
+        let stats: SessionStats = detail.session_stats.expect("session stats should exist");
+        let windows: Vec<_> = stats
+            .plan_limits
+            .iter()
+            .map(|w| (w.kind.as_str(), w.used_percent, w.resets_at))
+            .collect();
+        assert_eq!(
+            windows,
+            [
+                ("five_hour", Some(12.5), Some(1_772_366_400)),
+                ("seven_day", Some(41.0), Some(1_772_900_000)),
+            ]
+        );
     }
 
     #[test]

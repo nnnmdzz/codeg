@@ -21,7 +21,9 @@ use crate::acp::types::{
     EventEnvelope, GrokModelCatalog, GrokModelSpec, PromptCapabilitiesInfo,
     SessionConfigOptionInfo, SessionFailureRecord, SessionModeStateInfo, ToolCallImageInfo,
 };
+use crate::acp::plan_limits::merge_plan_limits;
 use crate::models::agent::AgentType;
+use crate::models::conversation::PlanLimitWindow;
 use crate::models::message::MessageRole;
 
 /// 当前 streaming 中的 turn 的累积内容。turn 完成后清空。
@@ -419,6 +421,10 @@ pub struct SessionState {
     pub fork_supported: bool,
     pub available_commands: Vec<AvailableCommandInfo>,
     pub usage: Option<UsageInfo>,
+    /// The account's subscription usage windows, latest per `kind`
+    /// (`AcpEvent::PlanLimits`). Empty until the agent reports any — API-key
+    /// sign-ins never do.
+    pub plan_limits: Vec<PlanLimitWindow>,
     /// True once the agent's initial selectors handshake (modes +
     /// config_options) has finished and `SelectorsReady` has fired. Persisted
     /// on the snapshot so a frontend that reconnects after refresh can see
@@ -740,6 +746,7 @@ impl SessionState {
             fork_supported: false,
             available_commands: Vec::new(),
             usage: None,
+            plan_limits: Vec::new(),
             selectors_ready: false,
             last_error: None,
             session_started_tx: None,
@@ -918,6 +925,9 @@ impl SessionState {
                     used: *used,
                     size: *size,
                 });
+            }
+            AcpEvent::PlanLimits { windows } => {
+                merge_plan_limits(&mut self.plan_limits, windows);
             }
             AcpEvent::ContentDelta {
                 text,
@@ -2157,6 +2167,7 @@ impl SessionState {
             config_options: self.config_options.clone(),
             prompt_capabilities: self.prompt_capabilities.clone(),
             usage: self.usage.clone(),
+            plan_limits: self.plan_limits.clone(),
             fork_supported: self.fork_supported,
             available_commands: self.available_commands.clone(),
             selectors_ready: self.selectors_ready,
@@ -2263,6 +2274,10 @@ pub struct LiveSessionSnapshot {
     pub config_options: Option<Vec<SessionConfigOptionInfo>>,
     pub prompt_capabilities: Option<PromptCapabilitiesInfo>,
     pub usage: Option<UsageInfo>,
+    /// See `SessionState.plan_limits`. `#[serde(default)]` so older payloads
+    /// deserialize to empty; omitted while empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub plan_limits: Vec<PlanLimitWindow>,
     pub fork_supported: bool,
     pub available_commands: Vec<AvailableCommandInfo>,
     pub selectors_ready: bool,
@@ -3175,6 +3190,43 @@ mod tests {
             s.pending_user_message_started_at.is_none(),
             "the turn-start instant is cleared in lockstep with the pending prompt"
         );
+    }
+
+    #[test]
+    fn plan_limits_merge_by_window_and_ride_the_snapshot() {
+        let window = |kind: &str, used: f64, minutes: u64| PlanLimitWindow {
+            kind: kind.into(),
+            used_percent: Some(used),
+            resets_at: Some(1_791_000_000),
+            window_minutes: Some(minutes),
+            status: None,
+        };
+        let mut s = fresh_state();
+        assert!(s.to_snapshot().plan_limits.is_empty());
+
+        s.apply_event(&AcpEvent::PlanLimits {
+            windows: vec![window("seven_day", 57.0, 10_080)],
+        });
+        s.apply_event(&AcpEvent::PlanLimits {
+            windows: vec![window("five_hour", 10.0, 300)],
+        });
+        // A later report for the same window replaces it; the other stays.
+        s.apply_event(&AcpEvent::PlanLimits {
+            windows: vec![window("five_hour", 62.0, 300)],
+        });
+
+        let snap = s.to_snapshot();
+        assert_eq!(
+            snap.plan_limits,
+            vec![window("five_hour", 62.0, 300), window("seven_day", 57.0, 10_080)]
+        );
+        let json = serde_json::to_value(&snap).expect("serialize");
+        assert_eq!(json["plan_limits"][0]["kind"], "five_hour");
+        // Older payloads without the field still deserialize.
+        let mut legacy = json.clone();
+        legacy.as_object_mut().unwrap().remove("plan_limits");
+        let back: LiveSessionSnapshot = serde_json::from_value(legacy).expect("deserialize");
+        assert!(back.plan_limits.is_empty());
     }
 
     #[test]
