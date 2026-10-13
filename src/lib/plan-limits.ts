@@ -12,7 +12,8 @@ function sameWindow(a: PlanLimitWindow, b: PlanLimitWindow): boolean {
     (a.used_percent ?? null) === (b.used_percent ?? null) &&
     (a.resets_at ?? null) === (b.resets_at ?? null) &&
     (a.window_minutes ?? null) === (b.window_minutes ?? null) &&
-    (a.status ?? null) === (b.status ?? null)
+    (a.status ?? null) === (b.status ?? null) &&
+    (a.observed_at ?? null) === (b.observed_at ?? null)
   )
 }
 
@@ -65,6 +66,33 @@ export function mergePlanLimits(
         : base.map((w, i) => (i === index ? window : w))
   }
   return next ? sortPlanLimits(next) : held
+}
+
+/** How old recorded figures may be before the plan may have moved on without
+ *  them — Codex's own threshold for calling its limits stale. */
+export const PLAN_LIMITS_STALE_AFTER_SECONDS = 15 * 60
+
+/**
+ * When the figures were recorded, if that is long enough ago that other
+ * sessions may have used the plan since: Codex's figures come from this
+ * conversation's own transcript, so a conversation opened long after its last
+ * turn shows that turn's. `null` when they are recent or carry no time
+ * (Claude's live reports).
+ */
+export function planLimitsStaleSince(
+  windows: PlanLimitWindow[],
+  nowSeconds: number
+): number | null {
+  let latest: number | null = null
+  for (const window of windows) {
+    const observed = window.observed_at ?? null
+    if (observed != null && (latest == null || observed > latest)) {
+      latest = observed
+    }
+  }
+  return latest != null && nowSeconds - latest > PLAN_LIMITS_STALE_AFTER_SECONDS
+    ? latest
+    : null
 }
 
 /** A window whose reset time has passed: its usage figure no longer holds. */
