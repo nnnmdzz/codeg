@@ -122,10 +122,11 @@ pub struct SessionStats {
 /// rollout (see `acp::plan_limits`); API-key sign-ins have none.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PlanLimitWindow {
-    /// Which window: Claude's own ids (`five_hour`, `seven_day`,
-    /// `seven_day_opus`, `seven_day_sonnet`, …); Codex windows are named the
-    /// same way from their length (`five_hour`, `seven_day`), else
-    /// `window_<minutes>m`.
+    /// Which window: Claude's own ids (`five_hour`, `seven_day`, the per-model
+    /// weekly `seven_day_opus` / `seven_day_sonnet` /
+    /// `seven_day_overage_included` — the CLI's "Fable limit" — and
+    /// `overage`); Codex windows are named the same way from their length
+    /// (`five_hour`, `seven_day`), else `window_<minutes>m`.
     pub kind: String,
     /// Share of the window already used, 0–100.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -140,6 +141,14 @@ pub struct PlanLimitWindow {
     /// to the limit) or `rejected` (at the limit until it resets).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+    /// When the agent recorded these figures, in Unix seconds — set for
+    /// Codex, whose rollout stamps every `token_count`, so a conversation
+    /// opened long after its last turn can say how old its figures are.
+    /// Claude's live reports leave it unset: the CLI reports only when a
+    /// window moves, so the time since its last report is not the figures'
+    /// age.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

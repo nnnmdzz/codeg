@@ -14,14 +14,19 @@
 //! API-key, Bedrock and Vertex sign-ins have no plan windows and report none.
 //!
 //! The windows belong to the account, not to a session: the live connections
-//! of an agent launched on the same settings (`config_fingerprint` — the same
-//! sign-in or provider) hold the same figures. A new connection starts from
-//! what those connections know ([`known_plan_limits`]), and a report on one is
-//! offered to the others ([`plan_limits_subscriber_task`]). A connection on
-//! other settings shares nothing, so a session on an API-key provider never
-//! shows a subscription's figures. A report never replaces a newer one
-//! ([`superseding`]), so an older transcript or a slower connection cannot roll
-//! the figures back.
+//! of an agent launched on the same settings (`config_fingerprint` — the launch
+//! environment and the agent's own config file, so the same provider and keys)
+//! hold the same figures. A new connection starts from what those connections
+//! know ([`known_plan_limits`]), and a report on one is offered to the others
+//! ([`plan_limits_subscriber_task`]). A connection on other settings shares
+//! nothing, so a session on an API-key provider never shows a subscription's
+//! figures. A report never replaces a newer one ([`superseding`]), so an older
+//! transcript or a slower connection cannot roll the figures back.
+//!
+//! The fingerprint does not see a sign-in the agent keeps itself: after a
+//! `claude /login` to another account in a terminal, connections on the same
+//! settings still share, and a window of the new account that resets before
+//! the held one reads as stale until the held one resets.
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -108,6 +113,7 @@ pub fn claude_plan_limits(meta: Option<&Map<String, Value>>) -> Vec<PlanLimitWin
                 resets_at: window.get("resetsAt").and_then(epoch_seconds),
                 window_minutes: claude_window_minutes(kind),
                 status: None,
+                observed_at: None,
             });
         }
     }
@@ -131,6 +137,7 @@ pub fn claude_plan_limits(meta: Option<&Map<String, Value>>) -> Vec<PlanLimitWin
                 resets_at,
                 window_minutes: claude_window_minutes(kind),
                 status,
+                observed_at: None,
             }),
         }
     }
@@ -143,13 +150,28 @@ pub fn claude_plan_limits(meta: Option<&Map<String, Value>>) -> Vec<PlanLimitWin
 /// The windows in a Codex rollout's `token_count.rate_limits`: `primary` and
 /// `secondary`, each `{used_percent, window_minutes, resets_at}`. Older Codex
 /// wrote `resets_in_seconds` instead of `resets_at`; that is resolved against
-/// `observed_at`, the rollout line's own timestamp. Windows are named by their
-/// length, so a weekly `primary` (some plans have only that) still reads as
-/// weekly.
+/// `observed_at`, the rollout line's own timestamp, which every window also
+/// carries as its age. Windows are named by their length, so a weekly
+/// `primary` (some plans have only that) still reads as weekly.
+///
+/// Only the account's own limit counts. Codex meters some models separately
+/// (`limit_id` other than `codex`, e.g. `codex_other`), records each bucket a
+/// response reports in turn, and writes the last one into the `token_count`
+/// line — so a line can describe one model's bucket rather than the account's
+/// 5-hour and weekly windows. Those lines say nothing here (Codex's own UI
+/// sets the same unrelated buckets aside); older rollouts have no `limit_id`
+/// and are the account's.
 pub fn codex_plan_limits(
     rate_limits: &Value,
     observed_at: Option<DateTime<Utc>>,
 ) -> Vec<PlanLimitWindow> {
+    if rate_limits
+        .get("limit_id")
+        .and_then(Value::as_str)
+        .is_some_and(|id| id != "codex")
+    {
+        return Vec::new();
+    }
     let mut windows = Vec::new();
     for slot in ["primary", "secondary"] {
         let Some(window) = rate_limits.get(slot).and_then(Value::as_object) else {
@@ -178,6 +200,7 @@ pub fn codex_plan_limits(
             resets_at,
             window_minutes,
             status: None,
+            observed_at: observed_at.map(|observed| observed.timestamp()),
         });
     }
     sort_windows(&mut windows);
@@ -263,8 +286,14 @@ pub async fn known_plan_limits(
 /// reports windows (an `AcpEvent::PlanLimits` on the in-process bus), each
 /// other connection of the same agent and settings takes whatever is newer
 /// than what it holds, through its own stream so attached clients see it too.
-/// The echo of that emit stops at once: the reporter already holds what it
-/// reported.
+///
+/// What is offered is what the reporter holds when the report is read, not the
+/// report itself: by then the reporter may hold newer figures, or ones a peer
+/// forwarded to it. A stale payload could also bounce for ever — two reports
+/// with the same figures and different `status` each supersede the other, so
+/// forwarding the payloads would flip both connections back and forth, every
+/// flip queuing the next. Offering current figures, the echo of a forward
+/// finds its source already holding them and stops at once.
 ///
 /// Subscribes before returning, like `lifecycle_subscriber_task`, so nothing
 /// emitted before the first poll is missed.
@@ -280,15 +309,15 @@ pub fn plan_limits_subscriber_task(
                 Err(broadcast::error::RecvError::Lagged(_)) => continue,
                 Err(broadcast::error::RecvError::Closed) => break,
             };
-            let AcpEvent::PlanLimits { windows } = &envelope.payload else {
+            if !matches!(envelope.payload, AcpEvent::PlanLimits { .. }) {
                 continue;
-            };
-            let peers: Vec<_> = {
+            }
+            let (source, peers): (_, Vec<_>) = {
                 let connections = manager.connections.lock().await;
                 let Some(source) = connections.get(&envelope.connection_id) else {
                     continue;
                 };
-                connections
+                let peers = connections
                     .values()
                     .filter(|connection| {
                         connection.agent_type == source.agent_type
@@ -296,11 +325,16 @@ pub fn plan_limits_subscriber_task(
                             && connection.id != source.id
                     })
                     .map(|connection| (Arc::clone(&connection.state), connection.emitter.clone()))
-                    .collect()
+                    .collect();
+                (Arc::clone(&source.state), peers)
             };
+            let windows = source.read().await.plan_limits.clone();
+            if windows.is_empty() {
+                continue;
+            }
             for (state, emitter) in peers {
                 emit_with_state_built(&state, &emitter, |held| {
-                    let fresh = superseding(&held.plan_limits, windows);
+                    let fresh = superseding(&held.plan_limits, &windows);
                     (!fresh.is_empty()).then_some(AcpEvent::PlanLimits { windows: fresh })
                 })
                 .await;
@@ -348,6 +382,7 @@ mod tests {
                 resets_at: Some(1_791_000_000),
                 window_minutes: Some(300),
                 status: Some("allowed_warning".into()),
+                observed_at: None,
             }]
         );
     }
@@ -409,6 +444,7 @@ mod tests {
                 resets_at: Some(1_788_106_606),
                 window_minutes: Some(10_080),
                 status: None,
+                observed_at: None,
             }]
         );
     }
@@ -429,6 +465,35 @@ mod tests {
         assert_eq!(windows[0].resets_at, Some(observed.timestamp() + 3600));
         assert_eq!(windows[1].kind, "seven_day");
         assert_eq!(windows[1].resets_at, Some(observed.timestamp() + 86_400));
+        // Every window says when Codex recorded it.
+        assert!(windows
+            .iter()
+            .all(|window| window.observed_at == Some(observed.timestamp())));
+    }
+
+    #[test]
+    fn a_codex_bucket_other_than_the_accounts_says_nothing() {
+        let bucket = |limit_id: Value| {
+            json!({
+                "limit_id": limit_id,
+                "limit_name": "gpt-5.3-codex-spark",
+                "primary": { "used_percent": 70.0, "window_minutes": 300, "resets_at": 1_788_000_000 },
+                "secondary": { "used_percent": 20.0, "window_minutes": 10080, "resets_at": 1_788_500_000 }
+            })
+        };
+        // A model's own bucket is not the account's 5-hour and weekly windows.
+        assert!(codex_plan_limits(&bucket(json!("codex_other")), None).is_empty());
+        // The account's bucket, by name or — in older rollouts — by default.
+        for limit_id in [json!("codex"), Value::Null] {
+            let kinds: Vec<_> = codex_plan_limits(&bucket(limit_id), None)
+                .into_iter()
+                .map(|window| window.kind)
+                .collect();
+            assert_eq!(kinds, ["five_hour", "seven_day"]);
+        }
+        let mut unnamed = bucket(Value::Null);
+        unnamed.as_object_mut().unwrap().remove("limit_id");
+        assert_eq!(codex_plan_limits(&unnamed, None).len(), 2);
     }
 
     #[test]
@@ -448,6 +513,7 @@ mod tests {
             resets_at: Some(resets_at),
             window_minutes: Some(300),
             status: None,
+            observed_at: None,
         };
         let mut held = vec![window(62.0, 2_000)];
         // Same window, less used: a slower connection, or an older transcript.
@@ -475,6 +541,7 @@ mod tests {
             resets_at: Some(1),
             window_minutes: Some(300),
             status: None,
+            observed_at: None,
         };
         let week = PlanLimitWindow {
             kind: "seven_day".into(),
@@ -482,6 +549,7 @@ mod tests {
             resets_at: Some(2),
             window_minutes: Some(10_080),
             status: None,
+            observed_at: None,
         };
         let mut held = vec![week.clone()];
         assert!(merge_plan_limits(&mut held, &[five(10.0)]));
@@ -498,6 +566,7 @@ mod tests {
             resets_at: Some(resets_at),
             window_minutes: Some(minutes),
             status: None,
+            observed_at: None,
         }
     }
 
@@ -538,11 +607,15 @@ mod tests {
         use crate::acp::types::EventEnvelope;
 
         let manager = manager_with_peers().await;
-        // The peer already holds a later 5-hour window than the report.
+        // The peer already holds a later 5-hour window than the report, and
+        // has been idle for ten minutes (a closed tab's connection, say).
         let later = window("five_hour", 5.0, 3_000, 300);
+        let idle_since = chrono::Utc::now() - chrono::Duration::minutes(10);
+        let peer_state = Arc::clone(&manager.connections.lock().await["peer"].state);
         {
-            let state = Arc::clone(&manager.connections.lock().await["peer"].state);
-            state.write().await.plan_limits = vec![later.clone()];
+            let mut peer = peer_state.write().await;
+            peer.plan_limits = vec![later.clone()];
+            peer.last_activity_at = idle_since;
         }
 
         let bus = Arc::new(InternalEventBus::new(Arc::new(EventBusMetrics::default())));
@@ -550,22 +623,101 @@ mod tests {
             manager.clone_ref(),
             Arc::clone(&bus),
         ));
+        // As in production, the reporter holds its report by the time the
+        // envelope is on the bus (its own emit applied it first).
         let week = window("seven_day", 30.0, 9_000, 10_080);
+        let report = vec![window("five_hour", 80.0, 2_000, 300), week.clone()];
+        {
+            let state = Arc::clone(&manager.connections.lock().await["reporter"].state);
+            state.write().await.plan_limits = report.clone();
+        }
         bus.send(Arc::new(EventEnvelope {
             seq: 1,
             connection_id: "reporter".into(),
-            payload: AcpEvent::PlanLimits {
-                windows: vec![window("five_hour", 80.0, 2_000, 300), week.clone()],
-            },
+            payload: AcpEvent::PlanLimits { windows: report },
         }));
         drop(bus);
         task.await.unwrap();
 
         assert_eq!(held(&manager, "peer").await, vec![later, week]);
+        // Another connection's report is no activity on this one: the idle
+        // sweep still sees the peer as idle as it was.
+        assert_eq!(peer_state.read().await.last_activity_at, idle_since);
         assert!(held(&manager, "other-settings").await.is_empty());
         assert!(held(&manager, "codex").await.is_empty());
-        // The reporter's own figures are its own emit's business.
-        assert!(held(&manager, "reporter").await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn reports_differing_only_in_status_settle_instead_of_bouncing() {
+        use crate::acp::types::EventEnvelope;
+        use crate::web::event_bridge::{emit_with_state, EventEmitter, WebEventBroadcaster};
+        use tokio::sync::broadcast::error::TryRecvError;
+
+        // One bus for everyone, as in production: a forward is itself an
+        // event the subscriber reads back.
+        let emitter = EventEmitter::test_web_only(Arc::new(WebEventBroadcaster::new()));
+        let bus = emitter
+            .acp_event_bus()
+            .expect("a web-only emitter carries a bus");
+        let manager = ConnectionManager::new();
+        for id in ["a", "b"] {
+            manager
+                .insert_test_connection(id, AgentType::ClaudeCode, None, emitter.clone())
+                .await;
+        }
+        let state = |id: &str| {
+            let manager = manager.clone_ref();
+            let id = id.to_string();
+            async move { Arc::clone(&manager.connections.lock().await[&id].state) }
+        };
+        let (a, b) = (state("a").await, state("b").await);
+        let mut watch = bus.subscribe();
+        let task = tokio::spawn(plan_limits_subscriber_task(
+            manager.clone_ref(),
+            Arc::clone(&bus),
+        ));
+
+        // The same 5-hour figures from both, with a verdict only on A's (its
+        // report was about that window; B's about another), both on the bus
+        // before the subscriber reads either. Each supersedes the other.
+        let mut warned = window("five_hour", 50.0, 2_000, 300);
+        warned.status = Some("allowed_warning".into());
+        let plain = window("five_hour", 50.0, 2_000, 300);
+        emit_with_state(
+            &a,
+            &emitter,
+            AcpEvent::PlanLimits {
+                windows: vec![warned],
+            },
+        )
+        .await;
+        emit_with_state(
+            &b,
+            &emitter,
+            AcpEvent::PlanLimits {
+                windows: vec![plain],
+            },
+        )
+        .await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        task.abort();
+        let mut reports = 0usize;
+        loop {
+            match watch.try_recv() {
+                Ok(envelope) => {
+                    let envelope: Arc<EventEnvelope> = envelope;
+                    if matches!(envelope.payload, AcpEvent::PlanLimits { .. }) {
+                        reports += 1;
+                    }
+                }
+                Err(TryRecvError::Lagged(skipped)) => reports += skipped as usize,
+                Err(_) => break,
+            }
+        }
+        // The two reports and at most a forward each — not a stream of flips.
+        assert!(reports <= 4, "{reports} plan-limit events crossed the bus");
+        assert_eq!(a.read().await.plan_limits, b.read().await.plan_limits);
     }
 
     #[tokio::test]

@@ -928,6 +928,14 @@ impl SessionState {
             }
             AcpEvent::PlanLimits { windows } => {
                 merge_plan_limits(&mut self.plan_limits, windows);
+                // The account's figures, not activity on this connection: most
+                // arrive forwarded from another connection of the account
+                // (`plan_limits_subscriber_task`). Stamping `last_activity_at`
+                // would keep an idle connection — a closed browser tab's — out
+                // of the idle sweep for as long as any connection on the
+                // account keeps reporting. A connection's own report rides on
+                // a `usage_update`, whose `UsageUpdate` event stamps it anyway.
+                return;
             }
             AcpEvent::ContentDelta {
                 text,
@@ -3200,13 +3208,19 @@ mod tests {
             resets_at: Some(1_791_000_000),
             window_minutes: Some(minutes),
             status: None,
+            observed_at: None,
         };
         let mut s = fresh_state();
         assert!(s.to_snapshot().plan_limits.is_empty());
 
+        // The account's figures are not activity on this connection — most
+        // are forwarded from another one — so they leave the idle clock alone.
+        let idle_since = Utc::now() - chrono::Duration::minutes(10);
+        s.last_activity_at = idle_since;
         s.apply_event(&AcpEvent::PlanLimits {
             windows: vec![window("seven_day", 57.0, 10_080)],
         });
+        assert_eq!(s.last_activity_at, idle_since);
         s.apply_event(&AcpEvent::PlanLimits {
             windows: vec![window("five_hour", 10.0, 300)],
         });
