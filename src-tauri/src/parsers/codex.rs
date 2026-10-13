@@ -5244,8 +5244,25 @@ impl CodexParser {
             context_window_used_tokens,
             context_window_max_tokens,
         );
-        if let Some(stats) = session_stats.as_mut() {
-            stats.plan_limits = latest_plan_limits;
+        match session_stats.as_mut() {
+            Some(stats) => stats.plan_limits = latest_plan_limits,
+            // A first turn refused at the plan's limit records the limits on a
+            // `token_count` without usage and gets no reply, so nothing else
+            // makes stats — yet the limits are that turn's whole story. Only
+            // with turns: a transcript that yields none reads as lost
+            // elsewhere (token-usage sync), and must keep reading so.
+            None if !latest_plan_limits.is_empty() && !turns.is_empty() => {
+                session_stats = Some(SessionStats {
+                    total_usage: None,
+                    total_tokens: None,
+                    total_duration_ms: 0,
+                    context_window_used_tokens: None,
+                    context_window_max_tokens: None,
+                    context_window_usage_percent: None,
+                    plan_limits: latest_plan_limits,
+                });
+            }
+            None => {}
         }
 
         let summary = ConversationSummary {
@@ -9106,14 +9123,17 @@ mod tests {
             .as_nanos();
         let path: PathBuf = env::temp_dir().join(format!("codeg-codex-limits-{nanos}.jsonl"));
 
-        // Two reports, then one that carries no plan (null windows): the
-        // session keeps the newest report that said something.
+        // Two reports, then one about a model's own bucket (`codex_other` —
+        // Codex writes the last bucket a response reported), then one that
+        // carries no plan (null windows): the session keeps the account's
+        // newest report.
         let content = concat!(
             "{\"timestamp\":\"2026-03-01T10:00:00Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"limits-1\",\"cwd\":\"/tmp/demo\"}}\n",
             "{\"timestamp\":\"2026-03-01T10:00:01Z\",\"type\":\"turn_context\",\"payload\":{\"model\":\"gpt-5-codex\"}}\n",
             "{\"timestamp\":\"2026-03-01T10:00:02Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"agent_message\",\"message\":\"done\"}}\n",
             "{\"timestamp\":\"2026-03-01T10:00:03Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"total_tokens\":170,\"input_tokens\":100,\"cached_input_tokens\":50,\"output_tokens\":20}},\"rate_limits\":{\"limit_id\":\"codex\",\"primary\":{\"used_percent\":10.0,\"window_minutes\":300,\"resets_at\":1772366400},\"secondary\":{\"used_percent\":40.0,\"window_minutes\":10080,\"resets_at\":1772900000}}}}\n",
             "{\"timestamp\":\"2026-03-01T10:05:00Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"total_tokens\":340,\"input_tokens\":200,\"cached_input_tokens\":100,\"output_tokens\":40}},\"rate_limits\":{\"limit_id\":\"codex\",\"primary\":{\"used_percent\":12.5,\"window_minutes\":300,\"resets_at\":1772366400},\"secondary\":{\"used_percent\":41.0,\"window_minutes\":10080,\"resets_at\":1772900000}}}}\n",
+            "{\"timestamp\":\"2026-03-01T10:05:30Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"total_tokens\":510,\"input_tokens\":300,\"cached_input_tokens\":150,\"output_tokens\":60}},\"rate_limits\":{\"limit_id\":\"codex_other\",\"limit_name\":\"gpt-5.3-codex-spark\",\"primary\":{\"used_percent\":88.0,\"window_minutes\":300,\"resets_at\":1772370000},\"secondary\":{\"used_percent\":5.0,\"window_minutes\":10080,\"resets_at\":1772950000}}}}\n",
             "{\"timestamp\":\"2026-03-01T10:06:00Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":null,\"rate_limits\":{\"limit_id\":\"codex\",\"primary\":null,\"secondary\":null}}}\n"
         );
         fs::write(&path, content).expect("write test jsonl");
@@ -9127,15 +9147,61 @@ mod tests {
         let windows: Vec<_> = stats
             .plan_limits
             .iter()
-            .map(|w| (w.kind.as_str(), w.used_percent, w.resets_at))
+            .map(|w| (w.kind.as_str(), w.used_percent, w.resets_at, w.observed_at))
             .collect();
+        // Stamped with the 10:05:00 line that recorded them.
+        let observed = Some(1_772_359_500);
         assert_eq!(
             windows,
             [
-                ("five_hour", Some(12.5), Some(1_772_366_400)),
-                ("seven_day", Some(41.0), Some(1_772_900_000)),
+                ("five_hour", Some(12.5), Some(1_772_366_400), observed),
+                ("seven_day", Some(41.0), Some(1_772_900_000), observed),
             ]
         );
+    }
+
+    #[test]
+    fn parse_detail_keeps_the_plan_limits_of_a_first_turn_refused_at_the_limit() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time ok")
+            .as_nanos();
+        let path: PathBuf = env::temp_dir().join(format!("codeg-codex-limit-hit-{nanos}.jsonl"));
+
+        // A new conversation whose first prompt Codex refuses: the plan is at
+        // its 5-hour limit. Codex records the limits on a `token_count` with no
+        // usage (`info: null`) and the turn produces no reply — the moment the
+        // indicator matters most.
+        let content = concat!(
+            "{\"timestamp\":\"2026-03-01T10:00:00Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"limit-hit-1\",\"cwd\":\"/tmp/demo\"}}\n",
+            "{\"timestamp\":\"2026-03-01T10:00:01Z\",\"type\":\"turn_context\",\"payload\":{\"model\":\"gpt-5-codex\"}}\n",
+            "{\"timestamp\":\"2026-03-01T10:00:01Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"turn-1\"}}\n",
+            "{\"timestamp\":\"2026-03-01T10:00:01Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"user_message\",\"message\":\"hello\"}}\n",
+            "{\"timestamp\":\"2026-03-01T10:00:02Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":null,\"rate_limits\":{\"limit_id\":\"codex\",\"primary\":{\"used_percent\":100.0,\"window_minutes\":300,\"resets_at\":1772366400},\"secondary\":{\"used_percent\":64.0,\"window_minutes\":10080,\"resets_at\":1772900000}}}}\n",
+            "{\"timestamp\":\"2026-03-01T10:00:02Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"error\",\"message\":\"You've hit your usage limit.\"}}\n",
+            "{\"timestamp\":\"2026-03-01T10:00:02Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\"turn-1\"}}\n"
+        );
+        fs::write(&path, content).expect("write test jsonl");
+
+        let detail = CodexParser::new()
+            .parse_conversation_detail(&path, "limit-hit-1")
+            .expect("parse detail ok");
+        let _ = fs::remove_file(&path);
+
+        let stats = detail
+            .session_stats
+            .expect("the plan's limits need session stats to ride on");
+        let windows: Vec<_> = stats
+            .plan_limits
+            .iter()
+            .map(|w| (w.kind.as_str(), w.used_percent))
+            .collect();
+        assert_eq!(
+            windows,
+            [("five_hour", Some(100.0)), ("seven_day", Some(64.0))]
+        );
+        // Nothing else is made up for it.
+        assert!(stats.total_usage.is_none());
     }
 
     #[test]
