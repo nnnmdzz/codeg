@@ -2,14 +2,16 @@
 
 // mobile fork：轉繁體的同步預覽。不送上游。
 //
-// 草稿裡有簡體時，在輸入框下方顯示轉成繁體（臺灣用語與標點）後的樣子——跟
-// 按「繁」或傳送前自動轉換的結果逐字相同：切段、選項與標點都走同一條路
+// 開著時，輸入框下方一直顯示草稿轉成繁體（臺灣用語與標點）後的樣子——跟按
+// 「繁」或傳送前自動轉換的結果逐字相同：切段、選項與標點都走同一條路
 // （@/lib/fork/composer-to-traditional 的 draftSegments、@/lib/fork/zh-tw/load
 // 的 draftOptions）。
 //
 // 引擎有拿不準、或有別的說法的地方加上點狀底線，點一下列出原文與各種寫法：
 // 選了只套用在這則草稿（@/lib/fork/zh-tw/draft-choices）；「以後都這樣轉」
 // 加進個人詞庫。同一個詞第二次選同一種非預設寫法時，提議記住它。
+//
+// 草稿是空的時候顯示提示；沒有要轉的字時照樣顯示，並註明不需轉換。
 //
 // 點選不搶 editor 的焦點，手機上鍵盤不會收起來。
 import { useEffect, useRef, useState, useSyncExternalStore } from "react"
@@ -58,6 +60,8 @@ const COPY = {
     learn: (s: string, t: string) => `以後「${s}」都轉成「${t}」嗎？`,
     learnYes: "好",
     choice: (t: string, s: string) => `${t}，原文「${s}」，點選可換寫法`,
+    placeholder: "輸入的文字會在這裡顯示成繁體",
+    unchanged: "不需轉換",
   },
   "zh-CN": {
     region: "转成繁体后的样子",
@@ -70,6 +74,8 @@ const COPY = {
     learn: (s: string, t: string) => `以后“${s}”都转成“${t}”吗？`,
     learnYes: "好",
     choice: (t: string, s: string) => `${t}，原文“${s}”，点选可换写法`,
+    placeholder: "输入的文字会在这里显示成繁体",
+    unchanged: "无需转换",
   },
   en: {
     region: "How the message reads in Traditional Chinese",
@@ -84,6 +90,8 @@ const COPY = {
     learnYes: "Yes",
     choice: (t: string, s: string) =>
       `${t}, from “${s}”; choose another wording`,
+    placeholder: "What you type shows here in Traditional Chinese",
+    unchanged: "Nothing to convert",
   },
 } as const
 
@@ -174,18 +182,18 @@ type PreviewNode =
   | { kind: "leaf"; label: string }
   | { kind: "break" }
 
-/** 草稿 → 預覽的內容；沒有要轉的簡體時為 null */
-function buildPreview(zh: ZhTwEngine, editor: Editor): PreviewNode[] | null {
+/**
+ * 草稿 → 預覽的內容，以及有沒有任何字會被換掉。引擎還沒載入（zh 為 null）
+ * 時先照原樣顯示。
+ */
+function buildPreview(
+  zh: ZhTwEngine | null,
+  editor: Editor
+): { nodes: PreviewNode[]; changed: boolean | null } {
   const segments = draftSegments(editor.state.doc)
-  if (
-    !segments.some(
-      (s) => s.kind === "text" && s.convert && zh.hasSimplified(s.text)
-    )
-  ) {
-    return null
-  }
-  const options = draftOptions(zh, editor)
+  const options = zh ? draftOptions(zh, editor) : null
   const nodes: PreviewNode[] = []
+  let changed = false
   for (const segment of segments) {
     if (segment.kind !== "text") {
       nodes.push(segment)
@@ -195,9 +203,14 @@ function buildPreview(zh: ZhTwEngine, editor: Editor): PreviewNode[] | null {
       nodes.push({ kind: "code", text: segment.text })
       continue
     }
+    if (!zh || !options) {
+      nodes.push({ kind: "text", text: segment.text })
+      continue
+    }
     const pieces = zh.pieces(segment.text, options)
     const joined = pieces.map((p) => p.text).join("")
     const final = taiwanPunctuation(joined)
+    if (final !== segment.text) changed = true
     const map = alignPunctuation(joined, final)
     let offset = 0
     let cursor = 0
@@ -214,7 +227,7 @@ function buildPreview(zh: ZhTwEngine, editor: Editor): PreviewNode[] | null {
     if (cursor < final.length)
       nodes.push({ kind: "text", text: final.slice(cursor) })
   }
-  return nodes
+  return { nodes, changed: zh ? changed : null }
 }
 
 function Choice({
@@ -356,21 +369,26 @@ export function TraditionalPreview({
     () => null
   )
 
-  // 開著預覽、草稿有漢字時才載入引擎（字典是獨立的 chunk）
-  const hasHan = editor
-    ? /\p{Script=Han}/u.test(editor.state.doc.textContent)
-    : false
+  // 開著預覽就載入引擎（字典是獨立的 chunk）：趁頁面閒置時載，打字時已經
+  // 準備好，也不會在載入當下卡住輸入
   useEffect(() => {
-    if (enabled && hasHan && !zh) {
+    if (!enabled || zh) return
+    const load = () => {
       loadZhTw().catch(() => {})
     }
-  }, [enabled, hasHan, zh])
+    if (typeof window.requestIdleCallback === "function") {
+      const id = window.requestIdleCallback(load, { timeout: 2000 })
+      return () => window.cancelIdleCallback(id)
+    }
+    const id = window.setTimeout(load, 200)
+    return () => window.clearTimeout(id)
+  }, [enabled, zh])
 
-  const nodes =
-    enabled && zh && editor && !editor.isDestroyed
-      ? buildPreview(zh, editor)
-      : null
-  if (!nodes || !editor) return null
+  if (!enabled || !editor || editor.isDestroyed) return null
+  const empty = editor.isEmpty
+  const { nodes, changed } = empty
+    ? { nodes: [], changed: null }
+    : buildPreview(zh, editor)
 
   return (
     <div className="px-3 pb-1.5" role="group" aria-label={copy.region}>
@@ -383,6 +401,9 @@ export function TraditionalPreview({
           className="min-w-0 flex-1 whitespace-pre-wrap break-words"
           title={copy.title}
         >
+          {empty && (
+            <span className="text-muted-foreground">{copy.placeholder}</span>
+          )}
           {nodes.map((node, index) => {
             switch (node.kind) {
               case "text":
@@ -419,6 +440,11 @@ export function TraditionalPreview({
                 )
             }
           })}
+          {changed === false && (
+            <span className="ml-2 text-xs text-muted-foreground">
+              {copy.unchanged}
+            </span>
+          )}
         </p>
       </div>
     </div>

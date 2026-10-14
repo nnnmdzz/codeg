@@ -51,17 +51,31 @@ function type(html: string) {
 
 const region = () => screen.queryByRole("group", { name: "轉成繁體後的樣子" })
 
+const PLACEHOLDER = "輸入的文字會在這裡顯示成繁體"
+
+/** 預覽顯示出草稿（不再是空草稿的提示）之後的文字 */
 async function previewText() {
-  await waitFor(() => expect(region()).not.toBeNull())
+  await waitFor(() => {
+    const text = region()?.textContent ?? ""
+    expect(text).not.toBe("")
+    expect(text).not.toContain(PLACEHOLDER)
+  })
   return region()!.textContent
 }
 
 describe("TraditionalPreview", () => {
-  it("shows nothing while the draft has no Simplified Chinese", async () => {
+  it("is there as soon as it is on, with a hint while the draft is empty", () => {
+    renderPreview()
+    expect(region()).toHaveTextContent(PLACEHOLDER)
+  })
+
+  it("shows a draft that needs no conversion as it is, and says so", async () => {
     renderPreview()
     type("<p>這個項目已經是繁體</p>")
-    await new Promise((resolve) => setTimeout(resolve, 200))
-    expect(region()).toBeNull()
+    expect(await previewText()).toBe("這個項目已經是繁體不需轉換")
+    // 有要轉的字時就不註明
+    type("<p>这个项目</p>")
+    await waitFor(() => expect(region()).toHaveTextContent(/^這個專案$/))
   })
 
   it("shows exactly what converting would produce, punctuation included", async () => {

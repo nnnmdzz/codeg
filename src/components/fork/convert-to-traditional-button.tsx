@@ -64,8 +64,7 @@ const COPY = {
     turnedOff: "已關閉：傳送前自動轉為繁體",
     sendFailed: "轉換器載入失敗，訊息沒有傳送",
     preview: "同步預覽",
-    previewHint:
-      "草稿有簡體時，在輸入框下方顯示轉換後的樣子；點有底線的詞可以換寫法。",
+    previewHint: "在輸入框下方即時顯示轉換後的樣子；點有底線的詞可以換寫法。",
     style: "寫法",
     everyday: "日常",
     everydayHint: "台、優化、打開、腳本",
@@ -88,8 +87,7 @@ const COPY = {
     turnedOff: "已关闭：发送前自动转为繁体",
     sendFailed: "转换器加载失败，消息没有发送",
     preview: "同步预览",
-    previewHint:
-      "草稿有简体时，在输入框下方显示转换后的样子；点有下划线的词可以换写法。",
+    previewHint: "在输入框下方实时显示转换后的样子；点有下划线的词可以换写法。",
     style: "写法",
     everyday: "日常",
     everydayHint: "台、優化、打開、腳本",
@@ -113,7 +111,7 @@ const COPY = {
     sendFailed: "Couldn't load the converter, so the message wasn't sent.",
     preview: "Live preview",
     previewHint:
-      "While the draft has Simplified Chinese, show how it reads converted, below the input. Tap an underlined word for other wordings.",
+      "Show how the message reads converted, live, below the input. Tap an underlined word for other wordings.",
     style: "Wording",
     everyday: "Everyday",
     everydayHint: "台, 優化, 打開, 腳本",
