@@ -118,6 +118,17 @@ git cannot tell on its own — upstream's merged version replaces it).
   these commits (`git rebase --skip` if git cannot tell on its own). Hand
   merge: the store test file, where #939's block and the fork's own both
   append at the end.
+- Out-of-turn watcher fix (server only, upstream PR #956): Claude Code 2.1.293
+  follows a Read of an image larger than the display limit with an `isMeta`
+  string record, `[Image: original …, displayed at …]`, marked
+  `turnCompanion`. `acp/background_watch.rs` took that shape for a cron prompt,
+  so everything the running turn wrote after it also surfaced as overlay
+  activity: the reply's tail rendered twice under the live copy, process left
+  open, until a reload. `turnCompanion` records now continue the turn. It rides
+  the same deploy branch as #939 (one commit, cherry-picked here with `-x`);
+  the official binary that the next online update brings back does not have
+  it, so the duplicate returns until a release contains #956; the rebase can
+  drop the commit then (`git rebase --skip` if git cannot tell on its own).
 - Convert-to-Traditional button: a 「繁」 button left of Send converts the
   draft (or just the selection) from Simplified to Traditional Chinese with
   Taiwan wording, then switches punctuation to Taiwan's forms
