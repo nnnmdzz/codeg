@@ -101,7 +101,8 @@ git cannot tell on its own — upstream's merged version replaces it).
   whole. Once a release contains #840, drop these commits
   (`git rebase --skip` if git cannot tell on its own).
 - Upstream PR #939 ("show the plan usage reset countdown below the
-  composer"), cherry-picked as its three commits with `-x`: the subscription
+  composer"), cherry-picked as its six commits with `-x` (the last three are
+  the maintainer's fixes pushed to the PR): the subscription
   plan's usage windows — Claude Pro/Max from what claude-agent-acp forwards on
   `usage_update` (`_meta["_claude/rateLimit"]`), Codex from its rollout — as a
   reset countdown left of the context-usage indicator, shared by an agent's
@@ -109,7 +110,8 @@ git cannot tell on its own — upstream's merged version replaces it).
   server half (its first commit), so while it is carried
   `/usr/local/bin/codeg-server` is a local build of the release tag plus that
   commit (worktree `../codeg-plan-limits-deploy`, branch
-  `deploy/plan-limits-<version>`; the official binary is kept next to it as
+  `deploy/plan-limits-<version>`, which carries only the PR's `src-tauri`
+  changes; the official binary is kept next to it as
   `codeg-server.official-<version>`). The server's online update brings the
   official binary back at the next release; the countdown then stays hidden
   (nothing reports it) until a release contains #939, and the rebase can drop
