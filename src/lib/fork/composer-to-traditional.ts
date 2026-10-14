@@ -106,6 +106,63 @@ export function codeMask(text: string): Uint8Array {
   return mask
 }
 
+/** 草稿的一段，給轉換預覽用（見 draftSegments） */
+export type DraftSegment =
+  | { kind: "text"; text: string; convert: boolean }
+  | { kind: "leaf"; label: string }
+  | { kind: "break" }
+
+/**
+ * 草稿依序切成段落，給轉換預覽用。切法跟 convertComposerText 一樣——同一個
+ * 文字節點裡、反引號外的連續文字算一段（convert 為 true），每段各轉一次——
+ * 預覽才會跟送出時逐字相同。程式碼原樣（convert 為 false），引用標籤只留
+ * 名稱，段落與換行是 break。
+ */
+export function draftSegments(doc: ProseMirrorNode): DraftSegment[] {
+  const { flat, pieces } = flatten(doc)
+  const mask = codeMask(flat)
+  const pieceAt = new Map(pieces.map((piece) => [piece.start, piece]))
+  const labels: string[] = []
+  doc.descendants((node) => {
+    if (node.isLeaf && !node.isText && node.type.name !== "hardBreak") {
+      const label = node.attrs?.label
+      labels.push(typeof label === "string" && label ? label : "…")
+    }
+    return !node.isText
+  })
+
+  const segments: DraftSegment[] = []
+  let leaf = 0
+  for (let i = 0; i < flat.length; ) {
+    const piece = pieceAt.get(i)
+    if (piece) {
+      let k = 0
+      while (k < piece.length) {
+        const convert = mask[piece.start + k] === 0
+        let end = k
+        while (
+          end < piece.length &&
+          (mask[piece.start + end] === 0) === convert
+        )
+          end++
+        segments.push({
+          kind: "text",
+          text: flat.slice(piece.start + k, piece.start + end),
+          convert,
+        })
+        k = end
+      }
+      i += Math.max(piece.length, 1)
+      continue
+    }
+    if (flat[i] === "\n") segments.push({ kind: "break" })
+    else if (flat[i] === "\uFFFC")
+      segments.push({ kind: "leaf", label: labels[leaf++] ?? "…" })
+    i++
+  }
+  return segments
+}
+
 export interface ConversionResult {
   /** 有沒有任何字被換掉 */
   changed: boolean

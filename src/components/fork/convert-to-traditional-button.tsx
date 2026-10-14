@@ -3,12 +3,14 @@
 // mobile fork：composer 送出鍵旁的「轉為繁體（台灣用語）」按鈕。不送上游。
 //
 // 有選取時只轉選取的文字，否則轉整則草稿；引用標籤與反引號裡的程式碼不轉
-// （見 @/lib/fork/composer-to-traditional）。字轉完後，標點也換成臺灣的寫法
-// （@/lib/fork/taiwan-punctuation）。轉換器第一次按下時才載入
-// （@/lib/fork/s2twp）。轉完的提示帶「復原」，按一次就整筆還原。
+// （見 @/lib/fork/composer-to-traditional）。轉換用 @/lib/fork/zh-tw 的引擎
+// （第一次需要時才載入），套用目前的寫法、個人詞庫與預覽裡點選過的寫法；字
+// 轉完後，標點也換成臺灣的寫法。轉完的提示帶「復原」，按一次就整筆還原。
 //
-// 旁邊的箭頭打開選單，切換「傳送前自動轉為繁體」（@/lib/fork/convert-on-send）。
-// 開啟時「繁」改用主色並加底線；傳送時由 useSendAsTraditional 先轉整則草稿。
+// 旁邊的箭頭打開選單：「傳送前自動轉為繁體」（@/lib/fork/convert-on-send）、
+// 同步預覽（./traditional-preview）、日常／正式寫法、個人詞庫
+// （./personal-dictionary-dialog）。開啟自動轉換時「繁」改用主色並加底線；
+// 傳送時由 useSendAsTraditional 先轉整則草稿。
 //
 // 與 composer 的耦合只有 message-input 傳進來的兩樣東西：取得 Tiptap editor
 // 的函式，以及 editor 是否已建立；再加上用 useSendAsTraditional 包住它的
@@ -23,6 +25,11 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
@@ -31,9 +38,14 @@ import {
   undoConversion,
 } from "@/lib/fork/composer-to-traditional"
 import { setConvertOnSend, useConvertOnSend } from "@/lib/fork/convert-on-send"
-import { getLoadedS2TWP, loadS2TWP } from "@/lib/fork/s2twp"
-import { taiwanPunctuation } from "@/lib/fork/taiwan-punctuation"
+import { draftConverter, getLoadedZhTw, loadZhTw } from "@/lib/fork/zh-tw/load"
+import {
+  personalSetting,
+  previewSetting,
+  styleSetting,
+} from "@/lib/fork/zh-tw/settings"
 import { cn } from "@/lib/utils"
+import { PersonalDictionaryDialog } from "./personal-dictionary-dialog"
 
 // fork 專用字串不放進 i18n/messages，避免和上游的翻譯檔衝突。
 const COPY = {
@@ -51,6 +63,15 @@ const COPY = {
     turnedOn: "已開啟：傳送前自動轉為繁體",
     turnedOff: "已關閉：傳送前自動轉為繁體",
     sendFailed: "轉換器載入失敗，訊息沒有傳送",
+    preview: "同步預覽",
+    previewHint:
+      "草稿有簡體時，在輸入框下方顯示轉換後的樣子；點有底線的詞可以換寫法。",
+    style: "寫法",
+    everyday: "日常",
+    everydayHint: "台、優化、打開、腳本",
+    formal: "正式",
+    formalHint: "臺、最佳化、開啟、指令碼",
+    dictionary: (n: number) => (n ? `個人詞庫（${n}）` : "個人詞庫"),
   },
   "zh-CN": {
     label: "转为繁体（台湾用语）",
@@ -66,6 +87,15 @@ const COPY = {
     turnedOn: "已开启：发送前自动转为繁体",
     turnedOff: "已关闭：发送前自动转为繁体",
     sendFailed: "转换器加载失败，消息没有发送",
+    preview: "同步预览",
+    previewHint:
+      "草稿有简体时，在输入框下方显示转换后的样子；点有下划线的词可以换写法。",
+    style: "写法",
+    everyday: "日常",
+    everydayHint: "台、優化、打開、腳本",
+    formal: "正式",
+    formalHint: "臺、最佳化、開啟、指令碼",
+    dictionary: (n: number) => (n ? `个人词库（${n}）` : "个人词库"),
   },
   en: {
     label: "Convert to Traditional Chinese (Taiwan)",
@@ -81,13 +111,18 @@ const COPY = {
     turnedOn: "On: convert to Traditional before sending",
     turnedOff: "Off: messages are sent as typed",
     sendFailed: "Couldn't load the converter, so the message wasn't sent.",
+    preview: "Live preview",
+    previewHint:
+      "While the draft has Simplified Chinese, show how it reads converted, below the input. Tap an underlined word for other wordings.",
+    style: "Wording",
+    everyday: "Everyday",
+    everydayHint: "台, 優化, 打開, 腳本",
+    formal: "Formal",
+    formalHint: "臺, 最佳化, 開啟, 指令碼",
+    dictionary: (n: number) =>
+      n ? `Your dictionary (${n})` : "Your dictionary",
   },
 } as const
-
-/** 字轉成繁體（臺灣用語）之後，標點也換成臺灣的寫法 */
-function toTaiwan(convert: (text: string) => string) {
-  return (text: string) => taiwanPunctuation(convert(text))
-}
 
 function useCopy() {
   const locale = useLocale()
@@ -137,16 +172,20 @@ export function ConvertToTraditionalButton({
   const copy = useCopy()
   const hasHan = useDraftHasHan(getEditor, ready)
   const onSend = useConvertOnSend()
+  const preview = previewSetting.use()
+  const style = styleSetting.use()
+  const personal = personalSetting.use()
   const [busy, setBusy] = useState(false)
+  const [dictionaryOpen, setDictionaryOpen] = useState(false)
 
   const convert = async () => {
     const editor = getEditor()
     if (!editor || editor.isDestroyed || !editor.isEditable) return
     setBusy(true)
     try {
-      const converter = await loadS2TWP()
+      const zh = await loadZhTw()
       if (editor.isDestroyed) return
-      const result = convertComposerText(editor, toTaiwan(converter))
+      const result = convertComposerText(editor, draftConverter(zh, editor))
       if (!result.changed) {
         toast(copy.nothing)
         return
@@ -237,8 +276,50 @@ export function ConvertToTraditionalButton({
               </span>
             </div>
           </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={preview}
+            onCheckedChange={(checked) => previewSetting.set(checked)}
+          >
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <span>{copy.preview}</span>
+              <span className="text-xs leading-relaxed text-muted-foreground">
+                {copy.previewHint}
+              </span>
+            </div>
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+            {copy.style}
+          </DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={style}
+            onValueChange={(value) =>
+              styleSetting.set(value === "formal" ? "formal" : "everyday")
+            }
+          >
+            <DropdownMenuRadioItem value="everyday">
+              <span>{copy.everyday}</span>
+              <span className="ml-auto pl-3 text-xs text-muted-foreground">
+                {copy.everydayHint}
+              </span>
+            </DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="formal">
+              <span>{copy.formal}</span>
+              <span className="ml-auto pl-3 text-xs text-muted-foreground">
+                {copy.formalHint}
+              </span>
+            </DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => setDictionaryOpen(true)}>
+            {copy.dictionary(personal.size)}
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      <PersonalDictionaryDialog
+        open={dictionaryOpen}
+        onOpenChange={setDictionaryOpen}
+      />
     </div>
   )
 }
@@ -267,7 +348,7 @@ export function useSendAsTraditional<A extends unknown[]>(
 
   // 開啟時先載入轉換器，傳送時就能同步轉換
   useEffect(() => {
-    if (enabled) loadS2TWP().catch(() => {})
+    if (enabled) loadZhTw().catch(() => {})
   }, [enabled])
 
   return useCallback(
@@ -277,19 +358,23 @@ export function useSendAsTraditional<A extends unknown[]>(
         send(...args)
         return
       }
-      const converter = getLoadedS2TWP()
-      if (converter) {
-        convertComposerText(editor, toTaiwan(converter), { wholeDraft: true })
+      const zh = getLoadedZhTw()
+      if (zh) {
+        convertComposerText(editor, draftConverter(zh, editor), {
+          wholeDraft: true,
+        })
         send(...args)
         return
       }
       if (pending.current) return
       pending.current = true
-      loadS2TWP()
+      loadZhTw()
         .then((loaded) => {
           const current = latest.current.getEditor()
           if (!current || current.isDestroyed) return
-          convertComposerText(current, toTaiwan(loaded), { wholeDraft: true })
+          convertComposerText(current, draftConverter(loaded, current), {
+            wholeDraft: true,
+          })
           latest.current.send(...args)
         })
         .catch(() => {

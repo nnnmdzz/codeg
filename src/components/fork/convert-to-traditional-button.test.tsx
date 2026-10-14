@@ -16,23 +16,31 @@ import { buildComposerExtensions } from "@/components/chat/composer/editor-confi
 const toast = vi.hoisted(() => Object.assign(vi.fn(), { error: vi.fn() }))
 vi.mock("sonner", () => ({ toast }))
 
-// 按鈕的測試不載入真的字典（見 s2twp.test.ts）。load 可以換掉，用來模擬
-// 「還沒載入完」與「載入失敗」。
-type Convert = (s: string) => string
-const fake: Convert = (s) => s.replace(/这/g, "這").replace(/说/g, "說")
+// 按鈕的測試不載入真的字典（引擎見 @/lib/fork/zh-tw 的測試）。load 可以
+// 換掉，用來模擬「還沒載入完」與「載入失敗」。
+type Convert = { convert: (s: string) => string }
+const fake: Convert = {
+  convert: (s) => s.replace(/这/g, "這").replace(/说/g, "說"),
+}
 const s2t = vi.hoisted(() => ({
-  loaded: null as ((s: string) => string) | null,
-  load: null as (() => Promise<(s: string) => string>) | null,
+  loaded: null as { convert: (s: string) => string } | null,
+  load: null as (() => Promise<{ convert: (s: string) => string }>) | null,
 }))
-vi.mock("@/lib/fork/s2twp", () => ({
-  loadS2TWP: () => s2t.load!(),
-  getLoadedS2TWP: () => s2t.loaded,
-}))
+vi.mock("@/lib/fork/zh-tw/load", async () => {
+  const { taiwanPunctuation } = await import("@/lib/fork/taiwan-punctuation")
+  return {
+    loadZhTw: () => s2t.load!(),
+    getLoadedZhTw: () => s2t.loaded,
+    draftConverter: (zh: Convert) => (text: string) =>
+      taiwanPunctuation(zh.convert(text)),
+  }
+})
 
 import {
   resetConvertOnSendCache,
   setConvertOnSend,
 } from "@/lib/fork/convert-on-send"
+import { resetZhTwSettingsCache } from "@/lib/fork/zh-tw/settings"
 import {
   ConvertToTraditionalButton,
   useSendAsTraditional,
@@ -51,6 +59,7 @@ beforeEach(() => {
   }
   localStorage.clear()
   resetConvertOnSendCache()
+  resetZhTwSettingsCache()
 })
 
 afterEach(() => {
@@ -169,6 +178,51 @@ describe("convert-before-sending switch", () => {
       fireEvent.click(button)
     })
     expect(plain()).toBe("這个")
+  })
+})
+
+describe("conversion options menu", () => {
+  it("switches the live preview and the wording, and remembers both on this device", async () => {
+    const user = userEvent.setup()
+    renderButton()
+    await user.click(screen.getByRole("button", { name: "繁體轉換選項" }))
+    const preview = await screen.findByRole("menuitemcheckbox", {
+      name: /同步預覽/,
+    })
+    expect(preview).toHaveAttribute("aria-checked", "true")
+    const everyday = screen.getByRole("menuitemradio", { name: /日常/ })
+    expect(everyday).toHaveAttribute("aria-checked", "true")
+    await user.click(screen.getByRole("menuitemradio", { name: /正式/ }))
+    expect(localStorage.getItem("codeg_fork_zh_tw_style")).toBe("formal")
+
+    await user.click(screen.getByRole("button", { name: "繁體轉換選項" }))
+    await user.click(
+      await screen.findByRole("menuitemcheckbox", { name: /同步預覽/ })
+    )
+    expect(localStorage.getItem("codeg_fork_zh_tw_preview")).toBe("0")
+  })
+
+  it("opens the personal dictionary, where words can be added and removed", async () => {
+    const user = userEvent.setup()
+    renderButton()
+    await user.click(screen.getByRole("button", { name: "繁體轉換選項" }))
+    await user.click(await screen.findByRole("menuitem", { name: "個人詞庫" }))
+    const dialog = await screen.findByRole("dialog", { name: "個人詞庫" })
+    expect(dialog).toHaveTextContent("還沒有詞")
+
+    await user.type(
+      screen.getByRole("textbox", { name: "原文（簡體）" }),
+      "原生态"
+    )
+    await user.type(screen.getByRole("textbox", { name: "寫成" }), "道地")
+    await user.click(screen.getByRole("button", { name: "加入" }))
+    expect(
+      JSON.parse(localStorage.getItem("codeg_fork_zh_tw_personal")!)
+    ).toEqual([["原生态", "道地"]])
+    expect(dialog).toHaveTextContent("原生态→道地")
+
+    await user.click(screen.getByRole("button", { name: "移除「原生态」" }))
+    expect(localStorage.getItem("codeg_fork_zh_tw_personal")).toBeNull()
   })
 })
 

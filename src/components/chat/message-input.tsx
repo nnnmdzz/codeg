@@ -159,6 +159,7 @@ import {
   ConvertToTraditionalButton,
   useSendAsTraditional,
 } from "@/components/fork/convert-to-traditional-button"
+import { TraditionalPreview } from "@/components/fork/traditional-preview"
 import { ComposerImageThumbnails } from "@/components/chat/composer/composer-image-thumbnails"
 import { useComposerAttachments } from "@/components/chat/composer/use-composer-attachments"
 import { useComposerShortcuts } from "@/components/chat/composer/use-composer-shortcuts"
@@ -2284,6 +2285,11 @@ export function MessageInput({
                 // top of the box (#746). `editableMinHeight` states its floor
                 // (see above); RichComposer explains the basis.
                 className={cn("grow", editableMinHeight)}
+              />
+              {/* mobile fork：轉繁體的同步預覽 */}
+              <TraditionalPreview
+                getEditor={() => editorRef.current?.getEditor() ?? null}
+                ready={composerReady}
               />
               <div className="flex shrink-0 items-end justify-between gap-1 px-2 pb-2">
                 <div className="flex min-w-0 items-end gap-1">
