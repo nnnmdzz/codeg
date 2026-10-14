@@ -224,6 +224,32 @@ const TELLTALE = new Set([
   "须",
 ])
 
+/**
+ * OpenCC 一律轉換、臺灣繁體也不單獨寫的字。STPhrases 在少數古語、專名裡保留
+ * 它們（草荐、万俟、南宫适、硗确），所以沒被算成簡體專用字；但臺灣平常寫
+ * 推薦、一萬、確定、別管，這些字單獨出現就是簡體。codeg 的繁中語料裡一次
+ * 都沒有。台、准、游、群、床、吃、采、杰、范、筑 這些臺灣也用的字不在內。
+ */
+const SIMPLIFIED_IN_TAIWAN = new Set([
+  "荐",
+  "万",
+  "别",
+  "厂",
+  "叶",
+  "广",
+  "确",
+  "种",
+  "适",
+  "价",
+  "党",
+  "帘",
+  "柜",
+  "腊",
+  "苹",
+  "蜡",
+  "虫",
+])
+
 /** 單獨出現時預設幾乎不會錯的多義字，不標示（里 → 裡、后 → 後、个 → 個⋯） */
 const QUIET_CHARS = new Set(["里", "后", "个", "么", "着", "于"])
 
@@ -289,7 +315,11 @@ export function createEngine(
     for (const ch of target) if (!stKeys.has(ch)) traditionalOnly.add(ch)
   }
   /** 簡繁共用、但在簡體裡另有對應的字（干、台、后、里⋯） */
-  const shared = (ch: string) => stKeys.has(ch) && traditionalChars.has(ch)
+  const shared = (ch: string) =>
+    stKeys.has(ch) && traditionalChars.has(ch) && !SIMPLIFIED_IN_TAIWAN.has(ch)
+  /** 出現就算簡體的字（不看所在的詞） */
+  const isSimplifiedChar = (ch: string) =>
+    simplifiedOnly.has(ch) || SIMPLIFIED_IN_TAIWAN.has(ch)
 
   const segmentation = new Trie<true>()
   loadGroup(
@@ -748,13 +778,20 @@ export function createEngine(
         const out = Array.from(replaceAll(variants, Array.from(hit.value)))
         if (
           out.length === hit.end - i &&
-          out.some((ch, k) => TELLTALE.has(chars[i + k]) && ch !== chars[i + k])
+          out.some(
+            (ch, k) =>
+              (TELLTALE.has(chars[i + k]) ||
+                SIMPLIFIED_IN_TAIWAN.has(chars[i + k])) &&
+              ch !== chars[i + k]
+          )
         ) {
           count++
         }
         i = hit.end
         continue
       }
+      // 不在保留它的詞（草荐、荐居）裡，就是簡體
+      if (SIMPLIFIED_IN_TAIWAN.has(chars[i])) count++
       i++
     }
     return count
@@ -860,13 +897,13 @@ export function createEngine(
         .join("")
     },
     hasSimplified(text) {
-      for (const ch of text) if (simplifiedOnly.has(ch)) return true
+      for (const ch of text) if (isSimplifiedChar(ch)) return true
       return false
     },
     leansSimplified(text) {
       let balance = 0
       for (const ch of text) {
-        if (simplifiedOnly.has(ch)) balance++
+        if (isSimplifiedChar(ch)) balance++
         else if (traditionalOnly.has(ch)) balance--
       }
       return balance > 0

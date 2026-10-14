@@ -107,6 +107,22 @@ describe("zh-tw engine", () => {
     }
   })
 
+  it("recognizes characters Taiwan never writes on their own", () => {
+    // OpenCC 只在 草荐、荐臻、万俟 這類古語、專名裡保留這些字，臺灣平常寫
+    // 推薦、一萬、確定、別管：單獨出現或混在繁體裡，都是簡體
+    expect(convert("推荐")).toBe("推薦")
+    expect(convert("推荐一下")).toBe("推薦一下")
+    expect(convert("推荐給你")).toBe("推薦給你")
+    expect(convert("這個推荐很好")).toBe("這個推薦很好")
+    expect(convert("确定")).toBe("確定")
+    expect(convert("别管了")).toBe("別管了")
+    expect(convert("一万")).toBe("一萬")
+    expect(engine.leansSimplified("推荐")).toBe(true)
+    // 保留它的詞照舊不動
+    expect(convert("草荐")).toBe("草荐")
+    expect(convert("荐居")).toBe("荐居")
+  })
+
   it("keeps the general sense where the computing word would be wrong", () => {
     expect(convert("我们支持你的决定")).toBe("我們支持你的決定")
     expect(convert("这个软件支持移动端")).toBe("這個軟體支援行動裝置")
