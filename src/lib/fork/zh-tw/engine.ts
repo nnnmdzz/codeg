@@ -17,6 +17,7 @@
 // 標點不在這裡處理（見 ../taiwan-punctuation）。
 import { CHAR_CANDIDATES } from "./candidates"
 import * as RULES from "./rules"
+import { TAIWAN_MD_REQUIRED, TAIWAN_MD_SUGGESTED } from "./taiwan-md"
 
 /** 用語規則（見 ./rules）。測試可以換掉，例如清空後跟 OpenCC 逐筆比對。 */
 export interface ZhTwRules {
@@ -28,6 +29,19 @@ export interface ZhTwRules {
   readonly NOT_AT_CLAUSE_END: readonly string[]
   readonly GUARDS: readonly string[]
   readonly CHAR_PREFERENCES: Readonly<Record<string, readonly [string, string]>>
+  /** Taiwan.md 用語庫（./taiwan-md）：預設換的、只在預覽可選的，與不採用的鍵 */
+  readonly TAIWAN_MD_REQUIRED: readonly (readonly [string, readonly string[]])[]
+  readonly TAIWAN_MD_SUGGESTED: readonly (readonly [
+    string,
+    readonly string[],
+  ])[]
+  readonly TAIWAN_MD_EXCLUDED: readonly string[]
+}
+
+const DEFAULT_RULES: ZhTwRules = {
+  ...RULES,
+  TAIWAN_MD_REQUIRED,
+  TAIWAN_MD_SUGGESTED,
 }
 
 export type ZhTwStyle = "everyday" | "formal"
@@ -150,8 +164,16 @@ interface TwRule {
 
 /** 覆寫：新增用語、兩可用語、例外、個人詞庫 */
 interface Override {
-  readonly kind: "added" | "optional" | "guard" | "personal"
+  readonly kind:
+    | "added"
+    | "optional"
+    | "guard"
+    | "personal"
+    | "taiwan-md"
+    | "taiwan-md-suggested"
   readonly out?: string
+  /** 其他說法（Taiwan.md 一個詞有幾種臺灣說法時） */
+  readonly more?: readonly string[]
 }
 
 /** 第一階段（簡轉繁）的一段 */
@@ -165,8 +187,45 @@ interface StageOne {
   tai: number[]
 }
 
-/** 單獨出現時預設幾乎不會錯的多義字，不標示（里 → 裡、后 → 後） */
-const QUIET_CHARS = new Set(["里", "后"])
+/**
+ * 同形異義字：簡繁都有這個字，但簡體裡另有一個意思、繁體寫成別的字（面／
+ * 麵、干／幹、里／裡、后／後、只／隻）。詞組把它換掉，就是簡體的證據。
+ */
+const TELLTALE = new Set([
+  "面",
+  "干",
+  "里",
+  "后",
+  "只",
+  "系",
+  "松",
+  "冲",
+  "谷",
+  "斗",
+  "范",
+  "余",
+  "制",
+  "复",
+  "征",
+  "志",
+  "卷",
+  "台",
+  "板",
+  "姜",
+  "朴",
+  "舍",
+  "尸",
+  "游",
+  "凶",
+  "郁",
+  "签",
+  "蒙",
+  "胡",
+  "须",
+])
+
+/** 單獨出現時預設幾乎不會錯的多義字，不標示（里 → 裡、后 → 後、个 → 個⋯） */
+const QUIET_CHARS = new Set(["里", "后", "个", "么", "着", "于"])
 
 const HAN = /\p{Script=Han}/u
 
@@ -189,7 +248,7 @@ const CLAUSE_END = new Set([
 
 export function createEngine(
   d: ZhTwDicts,
-  rules: ZhTwRules = RULES
+  rules: ZhTwRules = DEFAULT_RULES
 ): ZhTwEngine {
   const {
     ADDED_TERMS,
@@ -200,6 +259,9 @@ export function createEngine(
     TW_PHRASES_DROPPED,
     TW_PHRASES_FORMAL,
     TW_PHRASES_OPTIONAL,
+    TAIWAN_MD_REQUIRED,
+    TAIWAN_MD_SUGGESTED,
+    TAIWAN_MD_EXCLUDED,
   } = rules
   const compat = new Map(entries(d.CJK_Compatibility_Ideographs))
 
@@ -263,7 +325,18 @@ export function createEngine(
   loadGroup(variants, [d.TWVariantsPhrases, d.TWVariants], (_s, t) => t)
 
   const notAtEnd = new Set(NOT_AT_CLAUSE_END)
+  // 優先順序：./rules 的規則（有語料根據）> Taiwan.md > OpenCC。同一個鍵
+  // 後放的覆蓋先放的，所以 Taiwan.md 先放。
   const overrides = new Trie<Override>()
+  const excluded = new Set(TAIWAN_MD_EXCLUDED)
+  for (const [key, [out, ...more]] of TAIWAN_MD_SUGGESTED) {
+    if (!excluded.has(key)) {
+      overrides.set(key, { kind: "taiwan-md-suggested", out, more })
+    }
+  }
+  for (const [key, [out, ...more]] of TAIWAN_MD_REQUIRED) {
+    if (!excluded.has(key)) overrides.set(key, { kind: "taiwan-md", out, more })
+  }
   for (const key of GUARDS) overrides.set(key, { kind: "guard" })
   for (const [key, out] of OPTIONAL_TERMS)
     overrides.set(key, { kind: "optional", out })
@@ -595,23 +668,47 @@ export function createEngine(
       const sourceChars = chars.slice(i, hit.end)
       const source = sourceChars.join("")
       const script = scriptOf(sourceChars, style)
-      const { kind, out = script } = hit.value
+      const { kind, out = script, more = [] } = hit.value
       if (kind === "guard") {
         pieces.push({ source, text: script })
       } else if (kind === "optional") {
         pieces.push({
           source,
           text: script,
-          options: [script, out],
+          options: [script, out, ...more],
           reason: "term",
         })
       } else if (kind === "added") {
         pieces.push({
           source,
           text: out,
-          options: [out, script],
+          options: [out, ...more, script],
           reason: "term",
         })
+      } else if (kind === "taiwan-md" || kind === "taiwan-md-suggested") {
+        // Taiwan.md 不讓 OpenCC 已經做到的在地化退步：先看沒有它時的結果。
+        // 必換的：結果已經一樣就交給 OpenCC；建議的：預設維持那個結果，
+        // Taiwan.md 的說法只放進選項。
+        const opencc = openccPieces(sourceChars, style)
+        const base = opencc.map((p) => p.text).join("")
+        const theirs = [out, ...more]
+        if (theirs.includes(base)) {
+          pieces.push(...opencc)
+        } else if (kind === "taiwan-md") {
+          pieces.push({
+            source,
+            text: out,
+            options: [out, ...more, base],
+            reason: "term",
+          })
+        } else {
+          pieces.push({
+            source,
+            text: base,
+            options: [base, ...theirs],
+            reason: "term",
+          })
+        }
       } else {
         // 個人詞庫：另一種寫法是沒有個人詞庫時的結果
         const base = convertSpan(sourceChars, { style })
@@ -632,14 +729,44 @@ export function createEngine(
     return pieces
   }
 
+  /**
+   * 簡體的證據有幾個：簡體專用字，加上把「同形異義字」換掉的詞組——字都是
+   * 簡繁共用的，但繁體一定會寫成另一個字：方便面（麵）、干活（幹）、里面
+   * （裡）。了解／瞭解、占用／佔用這種臺灣兩種都寫的異體不算，否則你自己打的
+   * 繁體會被當成簡體改掉。
+   */
+  function simplifiedEvidence(chars: readonly string[]): number {
+    let count = 0
+    for (let i = 0; i < chars.length; ) {
+      if (simplifiedOnly.has(chars[i])) {
+        count++
+        i++
+        continue
+      }
+      const hit = stageOne.longest(chars, i)
+      if (hit && hit.end - i > 1) {
+        const out = Array.from(replaceAll(variants, Array.from(hit.value)))
+        if (
+          out.length === hit.end - i &&
+          out.some((ch, k) => TELLTALE.has(chars[i + k]) && ch !== chars[i + k])
+        ) {
+          count++
+        }
+        i = hit.end
+        continue
+      }
+      i++
+    }
+    return count
+  }
+
   /** 分句判斷要不要轉；同一句混著繁體時，只轉簡體的部分。 */
   function convertRun(text: string, options: ConvertOptions): Piece[] {
     const chars = Array.from(text)
-    let simplifiedCount = 0
+    const simplifiedCount = simplifiedEvidence(chars)
     let traditionalCount = 0
     for (const ch of chars) {
-      if (simplifiedOnly.has(ch)) simplifiedCount++
-      else if (traditionalOnly.has(ch)) traditionalCount++
+      if (traditionalOnly.has(ch)) traditionalCount++
     }
     const mostlySimplified =
       options.assumeSimplified ?? simplifiedCount > traditionalCount
@@ -658,7 +785,7 @@ export function createEngine(
       if (i < chars.length && !CLAUSE_END.has(chars[i])) continue
       const end = Math.min(i + 1, chars.length)
       const clause = chars.slice(start, end)
-      const hasS = clause.some((ch) => simplifiedOnly.has(ch))
+      const hasS = simplifiedEvidence(clause) > 0
       const hasT = clause.some((ch) => traditionalOnly.has(ch))
       if (hasS && hasT) {
         // 混著寫：繁體字與緊鄰它的共用字不動，其餘含簡體的片段才轉
@@ -673,7 +800,7 @@ export function createEngine(
         for (let k = 0; k <= clause.length; k++) {
           if (k < clause.length && fixed[k] === fixed[runStart]) continue
           const run = clause.slice(runStart, k)
-          if (!fixed[runStart] && run.some((ch) => simplifiedOnly.has(ch))) {
+          if (!fixed[runStart] && simplifiedEvidence(run) > 0) {
             pieces.push(...convertSpan(run, options))
           } else {
             keep(start + runStart, start + k)

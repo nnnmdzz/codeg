@@ -2,9 +2,17 @@
 
 - `candidates.ts` is generated from OpenCC's `data/dictionary/STCharacters.txt`
   (Apache-2.0; see `../opencc/LICENSE` and `../opencc/LICENSE-Apache-2.0.txt`).
+- `taiwan-md.ts` is generated from the terminology database of Taiwan.md
+  (https://taiwan.md/terminology/, repository frank890417/taiwan-md,
+  `data/terminology`) by `scripts/fork/vendor-taiwan-md-terms.mjs`. Taiwan.md's
+  content is licensed under CC BY-SA 4.0
+  (https://creativecommons.org/licenses/by-sa/4.0/), © Taiwan.md contributors.
+  The file is an adaptation (Simplified keys and Taiwan wordings only, graded
+  against zhtw's term lists) and is licensed under CC BY-SA 4.0 as well.
 - Some of the added Taiwan terms in `rules.ts` (marked "zhtw" there) were checked
   against, and taken from, the term lists of rajatim/zhtw
-  (https://github.com/rajatim/zhtw), under the MIT license below.
+  (https://github.com/rajatim/zhtw), under the MIT license below; the same lists
+  grade the Taiwan.md entries.
 
 ## rajatim/zhtw
 

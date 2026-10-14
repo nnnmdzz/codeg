@@ -18,6 +18,9 @@ const NO_RULES: ZhTwRules = {
   NOT_AT_CLAUSE_END: [],
   GUARDS: [],
   CHAR_PREFERENCES: {},
+  TAIWAN_MD_REQUIRED: [],
+  TAIWAN_MD_SUGGESTED: [],
+  TAIWAN_MD_EXCLUDED: [],
 }
 
 const opencc = ConverterBuilder({

@@ -71,6 +71,42 @@ describe("zh-tw engine", () => {
     expect(convert("在终端里运行")).toBe("在終端機裡執行")
   })
 
+  it("uses Taiwan's everyday words (Taiwan.md and a few common ones)", () => {
+    expect(convert("我们坐地铁去公司，下了地铁再转公交车")).toBe(
+      "我們坐捷運去公司，下了捷運再轉公車"
+    )
+    // 講外地的地鐵系統，臺灣也說「地鐵」
+    expect(convert("东京地铁比北京地铁复杂")).toBe("東京地鐵比北京地鐵複雜")
+    expect(convert("打车回家太贵了，还是坐出租车吧")).toBe(
+      "叫車回家太貴了，還是坐計程車吧"
+    )
+    expect(convert("晚饭吃土豆炒肉和西红柿炒蛋，饭后来点菠萝和猕猴桃")).toBe(
+      "晚飯吃馬鈴薯炒肉和番茄炒蛋，飯後來點鳳梨和奇異果"
+    )
+    expect(convert("办公室的空调太冷了，充电宝也没电了")).toBe(
+      "辦公室的冷氣太冷了，行動電源也沒電了"
+    )
+    expect(convert("他发了一个帖子，很多人点赞")).toBe(
+      "他發了一個貼文，很多人按讚"
+    )
+    expect(convert("他骑自行车上班，我骑摩托车")).toBe(
+      "他騎腳踏車上班，我騎機車"
+    )
+    // 程式語境的「打包」「推送」不是外帶、推播
+    expect(convert("打包以后推送到远程仓库")).toBe("打包以後推送到遠端倉庫")
+  })
+
+  it("recognizes Simplified from words whose Traditional form is another character", () => {
+    // 沒有簡體專用字，但「方便面」的「面」在繁體寫成「麵」
+    expect(convert("早上喝一杯酸奶，吃一包方便面")).toBe(
+      "早上喝一杯優酪乳，吃一包泡麵"
+    )
+    // 了解／瞭解、占用／佔用 是臺灣兩種都寫的異體：繁體的原文不動
+    for (const text of ["了解詳情", "快捷鍵已被占用", "用量分布", "目前回合"]) {
+      expect(convert(text)).toBe(text)
+    }
+  })
+
   it("keeps the general sense where the computing word would be wrong", () => {
     expect(convert("我们支持你的决定")).toBe("我們支持你的決定")
     expect(convert("这个软件支持移动端")).toBe("這個軟體支援行動裝置")
