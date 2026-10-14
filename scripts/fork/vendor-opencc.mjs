@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // mobile fork：把 opencc-js 的「簡體 → 繁體（台灣用語）」所需部分抽進
-// src/lib/fork/opencc/，給 composer 的「轉為繁體」按鈕用。
+// src/lib/fork/opencc/，給 composer 的「轉為繁體」用。字典由
+// src/lib/fork/zh-tw/engine.ts 讀取；core.js 只給 zh-tw/parity.test.ts
+// 當比對基準（引擎清空規則時必須跟它逐字相同）。
 //
 // 不加進 package.json：fork 的 lockfile 一旦和上游不同，上游每次改依賴，
 // 自動更新的 rebase 都會卡在 pnpm-lock.yaml。抽出來的檔案只在 fork 自己的
