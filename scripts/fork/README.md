@@ -120,28 +120,69 @@ git cannot tell on its own — upstream's merged version replaces it).
   append at the end.
 - Convert-to-Traditional button: a 「繁」 button left of Send converts the
   draft (or just the selection) from Simplified to Traditional Chinese with
-  Taiwan phrasing (OpenCC `s2twp`), then switches punctuation to Taiwan's
-  forms (`src/lib/fork/taiwan-punctuation.ts`): “”‘’ → 「」『』 when used in
-  Chinese (English quotes and apostrophes stay), · → ‧ between Chinese
-  characters, —— → ──, and half-width , . ? ! : ; after Chinese → full width
-  (a period only before a space, the end or Chinese, so 說明.txt and ./src
-  stay; straight quotes stay too, they may belong to a command). Reference
-  badges and code between backticks are left alone; one Undo (offered in the
-  toast) restores it. The
-  chevron next to it holds a "Convert to Traditional before sending" switch
-  (per device, off by default; 「繁」 turns primary and underlined while on):
-  Send, Enter, queueing, saving a queued edit and steering then convert the
-  whole draft first, and a converter that fails to load blocks the send
-  instead of sending it unconverted. Upstream touch in
-  `src/components/chat/message-input.tsx`: the button's mount, plus
-  `handleSend` / `handleSteerClick` renamed to `…Now` and re-declared as
-  `useSendAsTraditional(…Now)`, so every caller goes through the switch.
-  Everything else is fork-only: `src/components/fork/convert-to-traditional-button.tsx`,
-  `src/lib/fork/{s2twp,composer-to-traditional,convert-on-send}.ts`, and `src/lib/fork/opencc/`
-  — opencc-js's core and the seven dictionaries s2twp uses, vendored rather
-  than added to package.json so the lockfile stays upstream's and rebases keep
-  applying. They load on the first press as their own chunk (about 430 KB
-  gzipped). To update: `node scripts/fork/vendor-opencc.mjs <version>`.
+  Taiwan wording, then switches punctuation to Taiwan's forms
+  (`src/lib/fork/taiwan-punctuation.ts`): “”‘’ → 「」『』 when used in Chinese
+  (English quotes and apostrophes stay), · → ‧ between Chinese characters,
+  —— → ──, and half-width , . ? ! : ; after Chinese → full width (a period
+  only before a space, the end or Chinese, so 說明.txt and ./src stay;
+  straight quotes stay too, they may belong to a command). Reference badges
+  and code between backticks are left alone; one Undo (offered in the toast)
+  restores it. The chevron next to it holds a "Convert to Traditional before
+  sending" switch (per device, off by default; 「繁」 turns primary and
+  underlined while on): Send, Enter, queueing, saving a queued edit and
+  steering then convert the whole draft first, and a converter that fails to
+  load blocks the send instead of sending it unconverted.
+  - The converter (`src/lib/fork/zh-tw/`) is OpenCC's `s2twp` algorithm,
+    rewritten so every piece records its source and what else it could be.
+    With its rules cleared it matches the vendored opencc-js character for
+    character (`parity.test.ts`, every zh-CN string). On top of it:
+    - Only Simplified text is converted. A clause with no Simplified-only
+      character is left exactly as typed (OpenCC's Taiwan phrases used to turn
+      a typed 權限 into 許可權, 項目 into 專案, 干擾 into 幹擾); in a mixed
+      clause, Traditional characters and the shared ones next to them stay.
+      Words written alike in both scripts (保存, 刷新) are converted only when
+      the whole draft leans Simplified.
+    - Taiwan wording is graded instead of all-or-nothing (`rules.ts`, each
+      rule with its evidence): wrong OpenCC phrases dropped (許可權, 宕機,
+      對話方塊…), two-way ones made optional (類型/型別, 多任務/多工),
+      formal-only ones (最佳化, 開啟, 指令碼) applied only in the formal
+      style, Taiwan terms OpenCC lacks added (自訂, 帳號, 逾時, 回傳值,
+      終端機…), and general-sense guards (支持你, 官方文件, 法律程序). An
+      added word never cuts through a phrase OpenCC knows (合并发送 stays
+      合併發送). The evidence is codeg's own zh-CN → zh-TW strings, human
+      localized: `corpus.test.ts` holds the line at 64% exact / 9.05% CER
+      (everyday) and 65% / 8.65% (formal), up from OpenCC's 60.6% / 9.87%,
+      and requires Traditional input to come out unchanged, no Simplified
+      left, and converting twice to change nothing.
+    - Everyday style by default (台, 優化, 打開, 腳本); formal (臺, 最佳化,
+      開啟, 指令碼) from the menu.
+    - Live preview (`src/components/fork/traditional-preview.tsx`, on by
+      default): while the draft has Simplified Chinese, the message as it
+      will be sent shows under the input, through the same segments, options
+      and punctuation as the conversion itself. Words the converter decided
+      (Taiwan terms, style, characters with several forms) are underlined;
+      tapping one lists the original and the other wordings. A pick applies to
+      this draft (`draft-choices.ts`), the conversion and the send use it; the
+      same pick made a second time offers to remember it.
+    - Personal dictionary (`src/components/fork/personal-dictionary-dialog.tsx`,
+      per device): original → wording, above every other rule; added from the
+      preview ("always convert it this way") or by hand.
+    - `candidates.ts` (the other forms of 215 ambiguous characters) is
+      generated from OpenCC's STCharacters.txt by
+      `node scripts/fork/vendor-zh-tw-candidates.mjs`. Some added terms come
+      from rajatim/zhtw (MIT); see `src/lib/fork/zh-tw/THIRD_PARTY_LICENSES.md`.
+  Upstream touch in `src/components/chat/message-input.tsx`: the button's
+  and the preview's mounts, plus `handleSend` / `handleSteerClick` renamed to
+  `…Now` and re-declared as `useSendAsTraditional(…Now)`, so every caller goes
+  through the switch. Everything else is fork-only:
+  `src/components/fork/{convert-to-traditional-button,traditional-preview,personal-dictionary-dialog}.tsx`,
+  `src/lib/fork/{composer-to-traditional,convert-on-send}.ts`,
+  `src/lib/fork/zh-tw/`, and `src/lib/fork/opencc/` — the dictionaries s2twp
+  uses (and opencc-js's core, now only the parity test's reference), vendored
+  rather than added to package.json so the lockfile stays upstream's and
+  rebases keep applying. They load as their own chunk (about 430 KB gzipped)
+  the first time a draft has Chinese while the preview is on, or on the first
+  press. To update: `node scripts/fork/vendor-opencc.mjs <version>`.
 - Thinking blocks open by default: one prop (`defaultOpen`) on `ReasoningPart`
   in `src/components/message/content-parts-renderer.tsx`. Upstream folds them
   until asked (its `Reasoning` default stays folded, and its tests still
